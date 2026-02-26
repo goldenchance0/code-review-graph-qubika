@@ -7,12 +7,15 @@ Extracts structural nodes (classes, functions, imports, types) and edges
 from __future__ import annotations
 
 import hashlib
+import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
 import tree_sitter_language_pack as tslp
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Data models for extracted entities

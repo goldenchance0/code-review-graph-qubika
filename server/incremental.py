@@ -7,6 +7,7 @@ and updates the graph accordingly. Also supports CLI invocation for hooks.
 from __future__ import annotations
 
 import fnmatch
+import logging
 import subprocess
 import time
 from pathlib import Path
@@ -14,6 +15,8 @@ from typing import Optional
 
 from .graph import GraphStore
 from .parser import CodeParser, file_hash
+
+logger = logging.getLogger(__name__)
 
 # Default ignore patterns (in addition to .gitignore)
 DEFAULT_IGNORE_PATTERNS = [
@@ -315,8 +318,16 @@ def incremental_update(
 # ---------------------------------------------------------------------------
 
 
+_DEBOUNCE_SECONDS = 0.3
+
+
 def watch(repo_root: Path, store: GraphStore) -> None:
-    """Watch for file changes and auto-update the graph."""
+    """Watch for file changes and auto-update the graph.
+
+    Uses a 300ms debounce to batch rapid-fire saves into a single update.
+    """
+    import threading
+
     from watchdog.events import FileSystemEventHandler
     from watchdog.observers import Observer
 
@@ -326,7 +337,8 @@ def watch(repo_root: Path, store: GraphStore) -> None:
     class GraphUpdateHandler(FileSystemEventHandler):
         def __init__(self):
             self._pending: set[str] = set()
-            self._last_update = 0.0
+            self._lock = threading.Lock()
+            self._timer: threading.Timer | None = None
 
         def _should_handle(self, path: str) -> bool:
             try:
@@ -343,13 +355,13 @@ def watch(repo_root: Path, store: GraphStore) -> None:
             if event.is_directory:
                 return
             if self._should_handle(event.src_path):
-                self._update_file(event.src_path)
+                self._schedule(event.src_path)
 
         def on_created(self, event):
             if event.is_directory:
                 return
             if self._should_handle(event.src_path):
-                self._update_file(event.src_path)
+                self._schedule(event.src_path)
 
         def on_deleted(self, event):
             if event.is_directory:
@@ -357,7 +369,28 @@ def watch(repo_root: Path, store: GraphStore) -> None:
             store.remove_file_data(event.src_path)
             store.commit()
             rel = str(Path(event.src_path).relative_to(repo_root))
-            print(f"  Removed: {rel}")
+            logger.info("Removed: %s", rel)
+
+        def _schedule(self, abs_path: str):
+            """Add file to pending set and reset the debounce timer."""
+            with self._lock:
+                self._pending.add(abs_path)
+                if self._timer is not None:
+                    self._timer.cancel()
+                self._timer = threading.Timer(
+                    _DEBOUNCE_SECONDS, self._flush
+                )
+                self._timer.start()
+
+        def _flush(self):
+            """Process all pending files after the debounce window."""
+            with self._lock:
+                paths = list(self._pending)
+                self._pending.clear()
+                self._timer = None
+
+            for abs_path in paths:
+                self._update_file(abs_path)
 
         def _update_file(self, abs_path: str):
             path = Path(abs_path)
@@ -369,19 +402,24 @@ def watch(repo_root: Path, store: GraphStore) -> None:
                 fhash = file_hash(path)
                 nodes, edges = parser.parse_file(path)
                 store.store_file_nodes_edges(abs_path, nodes, edges, fhash)
-                store.set_metadata("last_updated", time.strftime("%Y-%m-%dT%H:%M:%S"))
+                store.set_metadata(
+                    "last_updated", time.strftime("%Y-%m-%dT%H:%M:%S")
+                )
                 store.commit()
                 rel = str(path.relative_to(repo_root))
-                print(f"  Updated: {rel} ({len(nodes)} nodes, {len(edges)} edges)")
+                logger.info(
+                    "Updated: %s (%d nodes, %d edges)",
+                    rel, len(nodes), len(edges),
+                )
             except Exception as e:
-                print(f"  Error updating {abs_path}: {e}")
+                logger.error("Error updating %s: %s", abs_path, e)
 
     handler = GraphUpdateHandler()
     observer = Observer()
     observer.schedule(handler, str(repo_root), recursive=True)
     observer.start()
 
-    print(f"Watching {repo_root} for changes... (Ctrl+C to stop)")
+    logger.info("Watching %s for changes... (Ctrl+C to stop)", repo_root)
     try:
         import time as _time
         while True:
@@ -389,7 +427,7 @@ def watch(repo_root: Path, store: GraphStore) -> None:
     except KeyboardInterrupt:
         observer.stop()
     observer.join()
-    print("Watch stopped.")
+    logger.info("Watch stopped.")
 
 
 # ---------------------------------------------------------------------------
@@ -411,9 +449,11 @@ def main() -> None:
     ap.add_argument("--repo", default=None, help="Repository root (auto-detected)")
     args = ap.parse_args()
 
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+
     repo_root = Path(args.repo) if args.repo else find_repo_root()
     if not repo_root:
-        print("Error: Not in a git repository")
+        logger.error("Not in a git repository")
         return
 
     db_path = get_db_path(repo_root)

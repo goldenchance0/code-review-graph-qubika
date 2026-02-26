@@ -19,6 +19,7 @@ env/
 *.db-journal
 *.db-wal
 *.db-shm
+.code-review-graph.db
 
 # IDE
 .idea/

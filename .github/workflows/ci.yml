@@ -32,6 +32,6 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies
-        run: pip install -e ".[dev]"
-      - name: Run tests
-        run: pytest --tb=short -q
+        run: pip install -e ".[dev]" pytest-cov
+      - name: Run tests with coverage
+        run: pytest --tb=short -q --cov=server --cov-report=term-missing

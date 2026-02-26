@@ -1,6 +1,6 @@
 """MCP tool definitions for the Code Review Graph server.
 
-Exposes 7 tools:
+Exposes 8 tools:
 1. build_or_update_graph  - full or incremental build
 2. get_impact_radius      - blast radius from changed files
 3. query_graph            - predefined graph queries
@@ -8,6 +8,7 @@ Exposes 7 tools:
 5. semantic_search_nodes  - keyword + vector search across nodes
 6. list_graph_stats       - aggregate statistics
 7. embed_graph            - compute vector embeddings for semantic search
+8. get_docs_section       - token-optimized documentation retrieval
 """
 
 from __future__ import annotations
@@ -719,23 +720,35 @@ def get_docs_section(section_name: str) -> dict[str, Any]:
     """
     import re as _re
 
-    for rel_path in _REFERENCE_PATHS:
-        # Try relative to repo root
+    # Try package-relative path first (works even outside a git repo)
+    pkg_dir = Path(__file__).resolve().parent.parent
+    search_roots = [pkg_dir]
+
+    # Also try repo root if inside a git repo
+    try:
         _, root = _get_store()
-        full_path = root / rel_path
-        if full_path.exists():
-            content = full_path.read_text()
-            match = _re.search(
-                rf'<section name="{_re.escape(section_name)}">(.*?)</section>',
-                content,
-                _re.DOTALL | _re.IGNORECASE,
-            )
-            if match:
-                return {
-                    "status": "ok",
-                    "section": section_name,
-                    "content": match.group(1).strip(),
-                }
+        if root not in search_roots:
+            search_roots.append(root)
+    except RuntimeError:
+        pass
+
+    for search_root in search_roots:
+        for rel_path in _REFERENCE_PATHS:
+            full_path = search_root / rel_path
+            if full_path.exists():
+                content = full_path.read_text()
+                match = _re.search(
+                    rf'<section name="{_re.escape(section_name)}">'
+                    r"(.*?)</section>",
+                    content,
+                    _re.DOTALL | _re.IGNORECASE,
+                )
+                if match:
+                    return {
+                        "status": "ok",
+                        "section": section_name,
+                        "content": match.group(1).strip(),
+                    }
 
     available = [
         "usage", "review-delta", "review-pr", "commands",
@@ -743,5 +756,8 @@ def get_docs_section(section_name: str) -> dict[str, Any]:
     ]
     return {
         "status": "not_found",
-        "error": f"Section '{section_name}' not found. Available: {', '.join(available)}",
+        "error": (
+            f"Section '{section_name}' not found. "
+            f"Available: {', '.join(available)}"
+        ),
     }
