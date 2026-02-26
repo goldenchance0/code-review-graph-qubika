@@ -95,4 +95,10 @@ code-review-graph watch
 
 # Custom base ref
 code-review-graph update --base origin/main
+
+# Set up Claude Code integration
+code-review-graph init
+
+# Generate graph visualization
+code-review-graph visualize
 ```

@@ -7,7 +7,7 @@
 [![CI](https://github.com/tirth8205/code-review-graph/actions/workflows/ci.yml/badge.svg)](https://github.com/tirth8205/code-review-graph/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg?style=flat-square)](https://www.python.org/)
 [![MCP](https://img.shields.io/badge/MCP-compatible-green.svg?style=flat-square)](https://modelcontextprotocol.io/)
-[![v1.3.0](https://img.shields.io/badge/version-1.3.0-purple.svg?style=flat-square)](#)
+[![v1.4.0](https://img.shields.io/badge/version-1.4.0-purple.svg?style=flat-square)](#)
 
 ---
 
@@ -32,6 +32,7 @@ Stop re-scanning your entire codebase on every review. `code-review-graph` build
 - **Token-efficient reviews** — Send only changed + impacted code to the model, not your entire repo
 - **Auto-update hooks** — Graph stays current on every file edit and git commit
 - **Vector embeddings** — Optional semantic search across your codebase with sentence-transformers
+- **Interactive visualization** — Generate an HTML graph of your codebase, explore in browser
 - **Watch mode** — Real-time graph updates as you code
 
 For the full feature list and changelog, see [docs/FEATURES.md](docs/FEATURES.md).
@@ -61,10 +62,12 @@ docker run -v $(pwd):/repo tirth8205/code-review-graph build
 ### CLI
 
 ```bash
+code-review-graph init       # Set up .mcp.json for Claude Code
 code-review-graph build      # Parse your entire codebase
 code-review-graph update     # Incremental update (only changed files)
 code-review-graph watch      # Real-time auto-updates as you code
 code-review-graph status     # Show graph statistics
+code-review-graph visualize  # Interactive HTML graph visualization
 code-review-graph serve      # Start MCP server
 ```
 
@@ -72,18 +75,11 @@ No git clone. No manual venv. No Python upgrade needed.
 
 ### Connect to Claude Code
 
-Add to your project's `.mcp.json`:
-
-```json
-{
-  "mcpServers": {
-    "code-review-graph": {
-      "command": "code-review-graph",
-      "args": ["serve"]
-    }
-  }
-}
+```bash
+code-review-graph init
 ```
+
+This creates `.mcp.json` with the correct Python path. Restart Claude Code to pick up the new MCP server.
 
 ### Use the skills
 

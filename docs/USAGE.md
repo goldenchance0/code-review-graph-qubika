@@ -1,28 +1,16 @@
 # Code Review Graph — User Guide
 
-**Version:** v1.1.0 (Feb 26, 2026)
+**Version:** v1.4.0 (Feb 26, 2026)
 
 ## Quick Installation (30 seconds)
 
 ```bash
-git clone https://github.com/tirth8205/code-review-graph.git
-cd code-review-graph
-python3 -m venv .venv && source .venv/bin/activate
-pip install -e .
+pip install code-review-graph
+code-review-graph init    # creates .mcp.json automatically
+code-review-graph build   # parse your codebase
 ```
 
-Add to your project's `.mcp.json`:
-```json
-{
-  "mcpServers": {
-    "code-review-graph": {
-      "command": "/path/to/code-review-graph/.venv/bin/python",
-      "args": ["-m", "code_review_graph.main"],
-      "cwd": "/path/to/code-review-graph"
-    }
-  }
-}
-```
+Restart Claude Code to pick up the MCP server.
 
 Then build the graph once:
 ```
@@ -55,7 +43,14 @@ code-review-graph watch
 ```
 Auto-updates the graph on every file save. Zero manual work.
 
-### 5. Semantic search (optional)
+### 5. Visualize the graph (optional)
+```bash
+code-review-graph visualize
+open .code-review-graph.html
+```
+Interactive D3.js force-directed graph of your codebase. Updated each time you run the command.
+
+### 6. Semantic search (optional)
 ```bash
 pip install -e ".[embeddings]"
 ```
