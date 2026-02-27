@@ -419,10 +419,10 @@ class GraphStore:
         """
         if not qualified_names:
             return []
-        # Use a temp table approach for large sets, direct IN clause for small
+        # Parameterized IN clause — placeholders are "?" markers, not user data
         qns = list(qualified_names)
         placeholders = ",".join("?" for _ in qns)
-        rows = self._conn.execute(
+        rows = self._conn.execute(  # nosec B608
             f"SELECT * FROM edges WHERE source_qualified IN ({placeholders})"
             f" AND target_qualified IN ({placeholders})",
             qns + qns,
