@@ -1,5 +1,31 @@
 # Changelog
 
+## [1.6.0] - 2026-02-27
+
+### Fixed
+- **Critical**: Incremental hash comparison bug — `file_hash` read from wrong field, causing every file to re-parse
+- Watch mode `on_deleted` handler now filters by ignore patterns
+- Removed dead code in `full_build` and duplicate `main()` in `incremental.py`
+- `get_staged_and_unstaged` handles git renamed files (`R old -> new`)
+- TROUBLESHOOTING.md hook config path corrected
+
+### Added
+- **Parser: C/C++ support** — full node extraction (structs, classes, functions, includes, calls, inheritance)
+- **Parser: name extraction** fixes for Kotlin/Swift (`simple_identifier`), Ruby (`constant`), C/C++ nested `function_declarator`
+- `GraphStore` context manager (`__enter__`/`__exit__`)
+- `get_all_edges()` and `get_edges_among()` public methods on `GraphStore`
+- NetworkX graph caching with automatic invalidation on writes
+- Subprocess timeout (30s) on all git calls
+- Progress logging every 50 files in full build
+- SHA-256 hashing in embeddings (replaced MD5)
+- Chunked embedding search (`fetchmany(500)`)
+- Batch edge collection in `get_impact_radius` (single SQL query)
+- ARIA labels throughout D3.js visualization
+- **CI**: Coverage enforcement (`--cov-fail-under=50`), bandit security scanning, mypy type checking
+- **Tests**: `test_incremental.py` (24 tests), `test_embeddings.py` (16 tests)
+- **Test fixtures**: C, C++, C#, Ruby, PHP, Kotlin, Swift with multilang test classes
+- **Docs**: API response schemas in COMMANDS.md, ignore patterns in USAGE.md
+
 ## [1.5.3] - 2026-02-27
 
 ### Fixed

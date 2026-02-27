@@ -1,6 +1,16 @@
 # Features
 
-## v1.5.3 (Current)
+## v1.6.0 (Current)
+- **24 audit fixes**: Critical bug fixes, performance improvements, parser enhancements, expanded test coverage
+- **Parser: C/C++ support**: Full node extraction for C and C++ (classes, functions, imports, calls, inheritance)
+- **Parser: name extraction**: Fixed for Kotlin, Swift (simple_identifier), Ruby (constant)
+- **Performance**: NetworkX graph caching, batch edge queries, chunked embedding search, git subprocess timeouts
+- **CI hardening**: Coverage enforcement (50%), bandit security scanning, mypy type checking
+- **Tests**: +40 new tests for incremental updates, embeddings, and 7 new language fixtures
+- **Docs**: API response schemas, ignore pattern documentation, fixed hook config reference
+- **Accessibility**: ARIA labels throughout D3.js visualization
+
+## v1.5.3
 - **Spaces-in-path handling**: `init` auto-creates symlinks when project paths contain spaces (macOS iCloud, etc.)
 - **No git required**: `build`, `status`, `visualize`, `watch` now work on any directory without git
 - **Plugin ready**: Skills registered in plugin.json, SKILL.md frontmatter fixed

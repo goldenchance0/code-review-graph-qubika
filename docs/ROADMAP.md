@@ -2,6 +2,14 @@
 
 ## Shipped
 
+### v1.6.0
+- 24 audit fixes: critical bugs, performance, parser, tests, CI, docs, accessibility
+- C/C++ parser support with full node extraction
+- Name extraction fixes for Kotlin, Swift, Ruby
+- NetworkX caching, batch queries, subprocess timeouts, chunked search
+- CI: coverage enforcement, bandit, mypy
+- 40+ new tests, 7 language fixtures
+
 ### v1.5.3
 - `init` auto-handles spaces in paths (macOS iCloud, OneDrive, etc.)
 - Works without git — `build`, `status`, `visualize`, `watch` fall back to cwd
