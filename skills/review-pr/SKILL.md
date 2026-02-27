@@ -1,4 +1,5 @@
 ---
+name: review-pr
 description: Review a PR or branch diff using the knowledge graph for full structural context. Outputs a structured review with blast-radius analysis.
 ---
 

@@ -51,6 +51,18 @@ dev = [
 [tool.hatch.build.targets.wheel]
 packages = ["code_review_graph"]
 
+[tool.hatch.build.targets.sdist]
+include = [
+    "code_review_graph/",
+    "skills/",
+    ".claude-plugin/",
+    "docs/",
+    "hooks/",
+    "LICENSE",
+    "README.md",
+    "pyproject.toml",
+]
+
 [tool.ruff]
 line-length = 100
 target-version = "py310"

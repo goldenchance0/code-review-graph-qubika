@@ -7,5 +7,6 @@
   },
   "repository": "https://github.com/tirth8205/code-review-graph",
   "license": "MIT",
-  "tags": ["code-review", "knowledge-graph", "incremental", "tree-sitter"]
+  "tags": ["code-review", "knowledge-graph", "incremental", "tree-sitter"],
+  "skills": "../skills/"
 }
