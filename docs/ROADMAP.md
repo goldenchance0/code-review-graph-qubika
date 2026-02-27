@@ -2,7 +2,7 @@
 
 ## Shipped
 
-### v1.6.0
+### v1.6.1
 - 24 audit fixes: critical bugs, performance, parser, tests, CI, docs, accessibility
 - C/C++ parser support with full node extraction
 - Name extraction fixes for Kotlin, Swift, Ruby
