@@ -1,6 +1,16 @@
 # Changelog
 
-## [1.6.3] - 2026-02-27
+## [1.6.3] - 2026-03-06
+
+### Added
+- **SessionStart hook** — Claude Code now automatically prefers graph MCP tools over full codebase scans at the start of every session, saving tokens on general queries
+- `homepage` and `author.url` fields in plugin.json for marketplace discoverability
+
+### Fixed
+- plugin.json schema: renamed `tags` to `keywords`, removed invalid `skills` path (auto-discovered from default location)
+- Removed screenshot placeholder section from README
+
+## [1.6.2] - 2026-02-27
 
 ### Fixed
 - **Critical**: Incremental hash comparison bug — `file_hash` read from wrong field, causing every file to re-parse

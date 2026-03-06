@@ -1,6 +1,11 @@
 # Features
 
 ## v1.6.3 (Current)
+- **SessionStart hook**: Claude Code automatically prefers graph MCP tools over full codebase scans at session start
+- **Marketplace ready**: plugin.json corrected for official Claude Code plugin marketplace submission
+- **README cleanup**: Removed screenshot placeholders
+
+## v1.6.2
 - **24 audit fixes**: Critical bug fixes, performance improvements, parser enhancements, expanded test coverage
 - **Parser: C/C++ support**: Full node extraction for C and C++ (classes, functions, imports, calls, inheritance)
 - **Parser: name extraction**: Fixed for Kotlin, Swift (simple_identifier), Ruby (constant)

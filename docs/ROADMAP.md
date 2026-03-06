@@ -3,6 +3,11 @@
 ## Shipped
 
 ### v1.6.3
+- SessionStart hook: Claude Code prefers graph tools over full codebase scans automatically
+- plugin.json corrected for official marketplace submission
+- README cleanup
+
+### v1.6.2
 - 24 audit fixes: critical bugs, performance, parser, tests, CI, docs, accessibility
 - C/C++ parser support with full node extraction
 - Name extraction fixes for Kotlin, Swift, Ruby
