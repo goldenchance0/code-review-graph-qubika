@@ -35,4 +35,4 @@ The graph uses SQLite with WAL mode. If you see lock errors:
 - Verify `uv` is installed (`uv --version`; install with `pip install uv` or `brew install uv`)
 - Check that `uvx code-review-graph serve` runs without errors
 - If using a custom `.mcp.json`, ensure it uses `"command": "uvx"` with `"args": ["code-review-graph", "serve"]`
-- Re-run `code-review-graph init` to regenerate the config
+- Re-run `code-review-graph install` to regenerate the config
