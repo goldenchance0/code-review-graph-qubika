@@ -1,4 +1,4 @@
-# LLM-OPTIMIZED REFERENCE — code-review-graph v1.7.0
+# LLM-OPTIMIZED REFERENCE — code-review-graph v1.7.1
 
 Claude Code: Read ONLY the exact `<section>` you need. Never load the whole file.
 
