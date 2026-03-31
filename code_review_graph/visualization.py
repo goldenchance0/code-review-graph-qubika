@@ -208,7 +208,7 @@ _HTML_TEMPLATE = r"""<!DOCTYPE html>
   }
   #legend h3 {
     font-size: 11px; font-weight: 700; margin-bottom: 6px;
-    color: #8b949e; text-transform: uppercase; letter-spacing: 1px;
+    color: #9eaab6; text-transform: uppercase; letter-spacing: 1px;
   }
   .legend-section { margin-bottom: 10px; }
   .legend-section:last-child { margin-bottom: 0; }
@@ -225,7 +225,7 @@ _HTML_TEMPLATE = r"""<!DOCTYPE html>
     position: absolute; bottom: 0; left: 0; right: 0;
     background: rgba(13,17,23,0.95); border-top: 1px solid #21262d;
     padding: 8px 24px; display: flex; gap: 32px; justify-content: center;
-    font-size: 12px; color: #8b949e; backdrop-filter: blur(12px);
+    font-size: 12px; color: #9eaab6; backdrop-filter: blur(12px);
   }
   .stat-item { display: flex; gap: 6px; align-items: center; }
   .stat-value { color: #e6edf3; font-weight: 600; }
@@ -247,7 +247,7 @@ _HTML_TEMPLATE = r"""<!DOCTYPE html>
     text-transform: uppercase; letter-spacing: 0.5px;
   }
   .tt-row { margin-top: 4px; }
-  .tt-label { color: #8b949e; }
+  .tt-label { color: #9eaab6; }
   .tt-file { color: #58a6ff; font-size: 11px; }
   #controls {
     position: absolute; top: 16px; right: 16px;
@@ -271,7 +271,7 @@ _HTML_TEMPLATE = r"""<!DOCTYPE html>
     outline: none; backdrop-filter: blur(12px);
   }
   #search:focus { border-color: #58a6ff; }
-  #search::placeholder { color: #484f58; }
+  #search::placeholder { color: #6e7681; }
   #search-results {
     position: absolute; top: 52px; right: 16px;
     background: rgba(22,27,34,0.97); border: 1px solid #30363d;
@@ -299,16 +299,16 @@ _HTML_TEMPLATE = r"""<!DOCTYPE html>
   #detail-panel h2 { font-size: 16px; color: #e6edf3; margin-bottom: 4px; word-break: break-all; }
   #detail-panel .dp-close {
     position: absolute; top: 12px; right: 14px;
-    cursor: pointer; color: #8b949e; font-size: 18px; line-height: 1;
+    cursor: pointer; color: #9eaab6; font-size: 18px; line-height: 1;
     border: none; background: none;
   }
   #detail-panel .dp-close:hover { color: #e6edf3; }
   .dp-section { margin-top: 14px; }
-  .dp-section h4 { color: #8b949e; font-size: 10px; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 6px; }
+  .dp-section h4 { color: #9eaab6; font-size: 10px; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 6px; }
   .dp-list { list-style: none; }
   .dp-list li { padding: 3px 0; color: #c9d1d9; cursor: pointer; }
   .dp-list li:hover { color: #58a6ff; text-decoration: underline; }
-  .dp-meta { color: #8b949e; }
+  .dp-meta { color: #9eaab6; }
   .dp-meta span { color: #e6edf3; font-weight: 600; }
   #filter-panel {
     position: absolute; bottom: 50px; left: 16px;
@@ -319,7 +319,7 @@ _HTML_TEMPLATE = r"""<!DOCTYPE html>
   }
   #filter-panel h3 {
     font-size: 11px; font-weight: 700; margin-bottom: 8px;
-    color: #8b949e; text-transform: uppercase; letter-spacing: 1px;
+    color: #9eaab6; text-transform: uppercase; letter-spacing: 1px;
   }
   .filter-item { display: flex; align-items: center; gap: 8px; padding: 3px 0; cursor: pointer; user-select: none; }
   .filter-item input { accent-color: #58a6ff; cursor: pointer; }
@@ -342,6 +342,9 @@ _HTML_TEMPLATE = r"""<!DOCTYPE html>
     <div class="legend-item" data-edge-kind="IMPORTS_FROM"><span class="legend-line l-imports"></span> Imports</div>
     <div class="legend-item" data-edge-kind="INHERITS"><span class="legend-line l-inherits"></span> Inherits</div>
     <div class="legend-item" data-edge-kind="CONTAINS"><span class="legend-line l-contains"></span> Contains</div>
+    <div class="legend-item" data-edge-kind="IMPLEMENTS"><span class="legend-line" style="border-top:2px dashed #f9e2af"></span> Implements</div>
+    <div class="legend-item" data-edge-kind="TESTED_BY"><span class="legend-line" style="border-top:2px solid #f38ba8"></span> Tested By</div>
+    <div class="legend-item" data-edge-kind="DEPENDS_ON"><span class="legend-line" style="border-top:2px dashed #fab387"></span> Depends On</div>
   </div>
 </div>
 <div id="filter-panel">
@@ -369,7 +372,7 @@ _HTML_TEMPLATE = r"""<!DOCTYPE html>
 var graphData = __GRAPH_DATA__;
 var KIND_COLOR  = { File:"#58a6ff", Class:"#f0883e", Function:"#3fb950", Test:"#d2a8ff", Type:"#8b949e" };
 var KIND_RADIUS = { File:18, Class:12, Function:6, Test:6, Type:5 };
-var EDGE_COLOR  = { CALLS:"#3fb950", IMPORTS_FROM:"#f0883e", INHERITS:"#d2a8ff", CONTAINS:"rgba(139,148,158,0.15)" };
+var EDGE_COLOR  = { CALLS:"#3fb950", IMPORTS_FROM:"#f0883e", INHERITS:"#d2a8ff", CONTAINS:"rgba(139,148,158,0.15)", IMPLEMENTS:"#f9e2af", TESTED_BY:"#f38ba8", DEPENDS_ON:"#fab387" };
 var communityColorScale = d3.scaleOrdinal(d3.schemeTableau10);
 var communityColoringOn = false;
 function escH(s) { return !s ? "" : s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;").replace(/`/g,"&#96;"); }
@@ -470,7 +473,7 @@ var defs = svg.append("defs");
 var glow = defs.append("filter").attr("id","glow").attr("x","-50%").attr("y","-50%").attr("width","200%").attr("height","200%");
 glow.append("feGaussianBlur").attr("stdDeviation","3").attr("result","blur");
 glow.append("feComposite").attr("in","SourceGraphic").attr("in2","blur").attr("operator","over");
-[{id:"arrow-calls",color:"#3fb950"},{id:"arrow-imports",color:"#f0883e"},{id:"arrow-inherits",color:"#d2a8ff"}].forEach(function(mk) {
+[{id:"arrow-calls",color:"#3fb950"},{id:"arrow-imports",color:"#f0883e"},{id:"arrow-inherits",color:"#d2a8ff"},{id:"arrow-implements",color:"#f9e2af"},{id:"arrow-tested_by",color:"#f38ba8"},{id:"arrow-depends_on",color:"#fab387"}].forEach(function(mk) {
   defs.append("marker").attr("id", mk.id)
     .attr("viewBox","0 -5 10 10").attr("refX",28).attr("refY",0)
     .attr("markerWidth",8).attr("markerHeight",8).attr("orient","auto")
@@ -494,6 +497,9 @@ var EDGE_CFG = {
   CALLS:        { dash:null, width:1.5, opacity:0.7, marker:"url(#arrow-calls)" },
   IMPORTS_FROM: { dash:"6,3", width:1.5, opacity:0.65, marker:"url(#arrow-imports)" },
   INHERITS:     { dash:"3,4", width:2, opacity:0.7, marker:"url(#arrow-inherits)" },
+  IMPLEMENTS:   { dash:"2,4", width:1.5, opacity:0.65, marker:"url(#arrow-implements)" },
+  TESTED_BY:    { dash:null, width:1.5, opacity:0.6, marker:"url(#arrow-tested_by)" },
+  DEPENDS_ON:   { dash:"8,3", width:1.5, opacity:0.6, marker:"url(#arrow-depends_on)" },
 };
 function eStyle(d) { return EDGE_CFG[d.kind] || {dash:null,width:1,opacity:0.3,marker:""}; }
 function eColor(d) { return EDGE_COLOR[d.kind] || "#484f58"; }
@@ -561,7 +567,7 @@ function updateNodes() {
   var lEnter = labelSel.enter().append("text").attr("class","node-label")
     .attr("text-anchor","start").attr("dy","0.35em")
     .text(function(d) { return d.label; })
-    .attr("fill", function(d) { return d.kind === "File" ? "#e6edf3" : d.kind === "Class" ? "#f0883e" : "#8b949e"; })
+    .attr("fill", function(d) { return d.kind === "File" ? "#e6edf3" : d.kind === "Class" ? "#f0883e" : "#9eaab6"; })
     .attr("font-size", function(d) { return d.kind === "File" ? "12px" : d.kind === "Class" ? "11px" : "10px"; })
     .attr("font-weight", function(d) { return d.kind === "File" ? 700 : d.kind === "Class" ? 600 : 400; });
   labelSel = lEnter.merge(labelSel);
