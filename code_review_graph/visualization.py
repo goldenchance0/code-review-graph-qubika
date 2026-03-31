@@ -299,7 +299,7 @@ _HTML_TEMPLATE = r"""<!DOCTYPE html>
   #detail-panel h2 { font-size: 16px; color: #e6edf3; margin-bottom: 4px; word-break: break-all; }
   #detail-panel .dp-close {
     position: absolute; top: 12px; right: 14px;
-    cursor: pointer; color: #9eaab6; font-size: 18px; line-height: 1;
+    cursor: pointer; color: #b0b8c4; font-size: 18px; line-height: 1;
     border: none; background: none;
   }
   #detail-panel .dp-close:hover { color: #e6edf3; }
@@ -327,10 +327,13 @@ _HTML_TEMPLATE = r"""<!DOCTYPE html>
   g.node-g:focus { outline: none; }
   g.node-g:focus-visible .node-shape { stroke: #58a6ff !important; stroke-width: 3 !important; }
   g.node-g:focus-visible .glow-ring { stroke: #58a6ff !important; opacity: 0.6 !important; }
+  button.legend-edge { background: none; border: none; color: #c9d1d9; font-size: 12px; font-family: inherit; }
+  button.legend-edge:focus-visible { outline: 2px solid #58a6ff; outline-offset: 2px; border-radius: 4px; }
+  .sr-item.sr-active { background: #30363d; }
 </style>
 </head>
 <body>
-<div id="legend" role="complementary" aria-label="Graph legend">
+<nav id="legend" aria-label="Graph legend">
   <h3>Nodes</h3>
   <div class="legend-section">
     <div class="legend-item"><svg width="16" height="16" viewBox="-8 -8 16 16" aria-hidden="true"><circle r="6" fill="#58a6ff"/></svg> File</div>
@@ -341,15 +344,15 @@ _HTML_TEMPLATE = r"""<!DOCTYPE html>
   </div>
   <h3>Edges</h3>
   <div class="legend-section">
-    <div class="legend-item" data-edge-kind="CALLS"><span class="legend-line l-calls"></span> Calls</div>
-    <div class="legend-item" data-edge-kind="IMPORTS_FROM"><span class="legend-line l-imports"></span> Imports</div>
-    <div class="legend-item" data-edge-kind="INHERITS"><span class="legend-line l-inherits"></span> Inherits</div>
-    <div class="legend-item" data-edge-kind="CONTAINS"><span class="legend-line l-contains"></span> Contains</div>
-    <div class="legend-item" data-edge-kind="IMPLEMENTS"><span class="legend-line" style="border-top:2px dashed #f9e2af"></span> Implements</div>
-    <div class="legend-item" data-edge-kind="TESTED_BY"><span class="legend-line" style="border-top:2px solid #f38ba8"></span> Tested By</div>
-    <div class="legend-item" data-edge-kind="DEPENDS_ON"><span class="legend-line" style="border-top:2px dashed #fab387"></span> Depends On</div>
+    <button class="legend-item legend-edge" data-edge-kind="CALLS" aria-pressed="true"><span class="legend-line l-calls"></span> Calls</button>
+    <button class="legend-item legend-edge" data-edge-kind="IMPORTS_FROM" aria-pressed="true"><span class="legend-line l-imports"></span> Imports</button>
+    <button class="legend-item legend-edge" data-edge-kind="INHERITS" aria-pressed="true"><span class="legend-line l-inherits"></span> Inherits</button>
+    <button class="legend-item legend-edge" data-edge-kind="CONTAINS" aria-pressed="true"><span class="legend-line l-contains"></span> Contains</button>
+    <button class="legend-item legend-edge" data-edge-kind="IMPLEMENTS" aria-pressed="true"><span class="legend-line" style="border-top:2px dashed #f9e2af"></span> Implements</button>
+    <button class="legend-item legend-edge" data-edge-kind="TESTED_BY" aria-pressed="true"><span class="legend-line" style="border-top:2px solid #f38ba8"></span> Tested By</button>
+    <button class="legend-item legend-edge" data-edge-kind="DEPENDS_ON" aria-pressed="true"><span class="legend-line" style="border-top:2px dashed #fab387"></span> Depends On</button>
   </div>
-</div>
+</nav>
 <div id="filter-panel">
   <h3>Filter by Kind</h3>
   <label class="filter-item"><input type="checkbox" data-kind="File" checked> File</label>
@@ -359,16 +362,16 @@ _HTML_TEMPLATE = r"""<!DOCTYPE html>
   <label class="filter-item"><input type="checkbox" data-kind="Type" checked> Type</label>
 </div>
 <div id="controls">
-  <input id="search" type="text" placeholder="Search nodes&#8230;" autocomplete="off" spellcheck="false" aria-label="Search graph nodes by name">
+  <input id="search" type="text" placeholder="Search nodes&#8230;" autocomplete="off" spellcheck="false" aria-label="Search graph nodes by name" aria-controls="search-results" aria-expanded="false">
   <select id="flow-select" aria-label="Select execution flow to highlight"><option value="">Flows</option></select>
-  <button id="btn-community" title="Toggle community coloring" aria-label="Toggle community coloring">Communities</button>
+  <button id="btn-community" title="Toggle community coloring" aria-label="Toggle community coloring" aria-pressed="false">Communities</button>
   <button id="btn-fit" title="Fit to screen" aria-label="Fit graph to screen">Fit</button>
   <button id="btn-labels" title="Toggle labels" class="active" aria-label="Toggle node labels" aria-pressed="true">Labels</button>
 </div>
-<div id="search-results"></div>
-<div id="detail-panel"><button class="dp-close" aria-label="Close detail panel">&times;</button><div id="dp-content"></div></div>
+<div id="search-results" role="listbox" aria-label="Search results"></div>
+<div id="detail-panel" role="dialog" aria-label="Node details"><button class="dp-close" aria-label="Close detail panel">&times;</button><div id="dp-content" tabindex="-1"></div></div>
 <div id="stats-bar" role="status" aria-label="Graph statistics"></div>
-<div id="tooltip"></div>
+<div id="tooltip" role="tooltip" aria-live="polite"></div>
 <svg role="img" aria-label="Interactive code knowledge graph visualization. Use search to find nodes, click files to expand."></svg>
 <script>
 "use strict";
@@ -706,6 +709,7 @@ document.querySelectorAll(".legend-item[data-edge-kind]").forEach(function(el) {
     var kind = this.dataset.edgeKind;
     if (hiddenEdgeKinds.has(kind)) { hiddenEdgeKinds.delete(kind); this.classList.remove("dimmed"); }
     else { hiddenEdgeKinds.add(kind); this.classList.add("dimmed"); }
+    this.setAttribute("aria-pressed", !hiddenEdgeKinds.has(kind));
     updateLinks();
   });
 });
@@ -720,6 +724,7 @@ document.querySelectorAll("#filter-panel input[data-kind]").forEach(function(el)
 document.getElementById("btn-community").addEventListener("click", function() {
   communityColoringOn = !communityColoringOn;
   this.classList.toggle("active");
+  this.setAttribute("aria-pressed", communityColoringOn);
   nodeGroup.selectAll("g.node-g").select(".node-shape").transition().duration(300)
     .attr("fill", function(d) { return nodeColor(d); });
   nodeGroup.selectAll("g.node-g").select(".glow-ring").transition().duration(300)
@@ -757,11 +762,17 @@ function clearFlowHighlight() {
 }
 var detailPanel = document.getElementById("detail-panel");
 var dpContent = document.getElementById("dp-content");
+var detailTrigger = null;
 document.querySelector("#detail-panel .dp-close").addEventListener("click", function() {
   detailPanel.classList.remove("visible");
+  if (detailTrigger) detailTrigger.focus();
 });
-svg.on("click", function() { detailPanel.classList.remove("visible"); });
+svg.on("click", function() {
+  detailPanel.classList.remove("visible");
+  if (detailTrigger) detailTrigger.focus();
+});
 function showDetailPanel(d) {
+  detailTrigger = document.activeElement;
   var callers = [], callees = [];
   edges.forEach(function(e) {
     var s = typeof e.source === "object" ? e.source.qualified_name : e._source;
@@ -793,6 +804,9 @@ function showDetailPanel(d) {
   dpContent.textContent = "";
   dpContent.insertAdjacentHTML("beforeend", h);
   detailPanel.classList.add("visible");
+  var firstFocusable = dpContent.querySelector("li, button, a");
+  if (firstFocusable) firstFocusable.focus();
+  else dpContent.focus();
   dpContent.querySelectorAll("li[data-qn]").forEach(function(li) {
     li.addEventListener("click", function() {
       var qn = li.dataset.qn;
@@ -811,23 +825,50 @@ searchInput.addEventListener("input", function() {
   showSearchResults();
 });
 searchInput.addEventListener("focus", showSearchResults);
+searchInput.addEventListener("keydown", function(ev) {
+  var items = searchResults.querySelectorAll(".sr-item");
+  if (!items.length) return;
+  var active = searchResults.querySelector(".sr-item.sr-active");
+  var idx = active ? Array.from(items).indexOf(active) : -1;
+  if (ev.key === "ArrowDown") {
+    ev.preventDefault();
+    if (active) active.classList.remove("sr-active");
+    idx = (idx + 1) % items.length;
+    items[idx].classList.add("sr-active");
+    items[idx].scrollIntoView({ block: "nearest" });
+    searchInput.setAttribute("aria-activedescendant", items[idx].id);
+  } else if (ev.key === "ArrowUp") {
+    ev.preventDefault();
+    if (active) active.classList.remove("sr-active");
+    idx = idx <= 0 ? items.length - 1 : idx - 1;
+    items[idx].classList.add("sr-active");
+    items[idx].scrollIntoView({ block: "nearest" });
+    searchInput.setAttribute("aria-activedescendant", items[idx].id);
+  } else if (ev.key === "Enter" && active) {
+    ev.preventDefault();
+    active.click();
+  }
+});
 document.addEventListener("click", function(ev) {
   if (!searchResults.contains(ev.target) && ev.target !== searchInput) searchResults.style.display = "none";
 });
 function showSearchResults() {
-  if (!searchTerm) { searchResults.style.display = "none"; return; }
+  if (!searchTerm) { searchResults.style.display = "none"; searchInput.setAttribute("aria-expanded", "false"); return; }
   var matched = [];
   nodes.forEach(function(n) {
     if (n._hidden) return;
     var hay = (n.label + " " + n.qualified_name).toLowerCase();
     if (hay.indexOf(searchTerm) !== -1) matched.push(n);
   });
-  if (!matched.length) { searchResults.style.display = "none"; return; }
+  if (!matched.length) { searchResults.style.display = "none"; searchInput.setAttribute("aria-expanded", "false"); return; }
   searchResults.textContent = "";
-  matched.slice(0, 15).forEach(function(n) {
+  matched.slice(0, 15).forEach(function(n, i) {
     var bg = KIND_COLOR[n.kind] || "#555";
     var div = document.createElement("div");
     div.className = "sr-item";
+    div.setAttribute("role", "option");
+    div.setAttribute("tabindex", "-1");
+    div.id = "sr-" + i;
     var kindSpan = document.createElement("span");
     kindSpan.className = "sr-kind";
     kindSpan.style.background = bg;
@@ -843,6 +884,7 @@ function showSearchResults() {
     searchResults.appendChild(div);
   });
   searchResults.style.display = "block";
+  searchInput.setAttribute("aria-expanded", "true");
 }
 function applySearchFilter() {
   if (!searchTerm) {
