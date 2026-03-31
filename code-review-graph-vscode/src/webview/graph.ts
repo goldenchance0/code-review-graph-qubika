@@ -859,6 +859,21 @@ function bindToolbarEvents(): void {
     }
   }
 
+  // Edge filter popover toggle
+  const edgeFilterBtn = document.getElementById("btn-edge-filter");
+  const edgePopover = document.getElementById("edge-popover");
+  if (edgeFilterBtn && edgePopover) {
+    edgeFilterBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      edgePopover.classList.toggle("visible");
+    });
+    document.addEventListener("click", (e) => {
+      if (!edgePopover.contains(e.target as Node) && e.target !== edgeFilterBtn) {
+        edgePopover.classList.remove("visible");
+      }
+    });
+  }
+
   // Depth slider
   const depthSlider = document.getElementById("depth-slider") as HTMLInputElement | null;
   if (depthSlider) {
