@@ -287,12 +287,12 @@ _HTML_TEMPLATE = r"""<!DOCTYPE html>
   .sr-item:last-child { border-bottom: none; }
   .sr-kind { font-size: 9px; padding: 2px 6px; border-radius: 8px; text-transform: uppercase; font-weight: 700; }
   #detail-panel {
-    position: absolute; top: 16px; right: 16px;
+    position: absolute; top: 16px; left: 16px;
     width: 320px; max-height: calc(100vh - 80px);
     background: rgba(22,27,34,0.97); border: 1px solid #30363d;
     border-radius: 10px; padding: 20px;
     box-shadow: 0 8px 32px rgba(0,0,0,0.6);
-    backdrop-filter: blur(12px); z-index: 20;
+    backdrop-filter: blur(12px); z-index: 15;
     overflow-y: auto; display: none; font-size: 12px;
   }
   #detail-panel.visible { display: block; }
@@ -408,7 +408,7 @@ _HTML_TEMPLATE = r"""<!DOCTYPE html>
     <button class="legend-item legend-edge" data-edge-kind="INHERITS" aria-pressed="true"><span class="legend-line l-inherits"></span> Inherits</button>
     <button class="legend-item legend-edge" data-edge-kind="CONTAINS" aria-pressed="true"><span class="legend-line l-contains"></span> Contains</button>
     <button class="legend-item legend-edge" data-edge-kind="IMPLEMENTS" aria-pressed="true"><span class="legend-line" style="border-top:2px dashed #f9e2af"></span> Implements</button>
-    <button class="legend-item legend-edge" data-edge-kind="TESTED_BY" aria-pressed="true"><span class="legend-line" style="border-top:2px solid #f38ba8"></span> Tested By</button>
+    <button class="legend-item legend-edge" data-edge-kind="TESTED_BY" aria-pressed="true"><span class="legend-line" style="border-top:2px dotted #f38ba8"></span> Tested By</button>
     <button class="legend-item legend-edge" data-edge-kind="DEPENDS_ON" aria-pressed="true"><span class="legend-line" style="border-top:2px dashed #fab387"></span> Depends On</button>
   </div>
 </nav>
@@ -602,9 +602,9 @@ var EDGE_CFG = {
   CALLS:        { dash:null, width:2, opacity:0.7, marker:"url(#arrow-calls)" },
   IMPORTS_FROM: { dash:"8,4", width:2, opacity:0.65, marker:"url(#arrow-imports)" },
   INHERITS:     { dash:"2,6", width:2.5, opacity:0.7, marker:"url(#arrow-inherits)" },
-  IMPLEMENTS:   { dash:"2,4", width:1.5, opacity:0.65, marker:"url(#arrow-implements)" },
-  TESTED_BY:    { dash:null, width:1.5, opacity:0.6, marker:"url(#arrow-tested_by)" },
-  DEPENDS_ON:   { dash:"8,3", width:1.5, opacity:0.6, marker:"url(#arrow-depends_on)" },
+  IMPLEMENTS:   { dash:"4,3", width:1.5, opacity:0.65, marker:"url(#arrow-implements)" },
+  TESTED_BY:    { dash:"2,4", width:1.5, opacity:0.6, marker:"url(#arrow-tested_by)" },
+  DEPENDS_ON:   { dash:"8,4", width:1, opacity:0.6, marker:"url(#arrow-depends_on)" },
 };
 function eStyle(d) { return EDGE_CFG[d.kind] || {dash:null,width:1,opacity:0.3,marker:""}; }
 function eColor(d) { return EDGE_COLOR[d.kind] || "#484f58"; }
@@ -871,10 +871,12 @@ var dpContent = document.getElementById("dp-content");
 var detailTrigger = null;
 document.querySelector("#detail-panel .dp-close").addEventListener("click", function() {
   detailPanel.classList.remove("visible");
+  document.getElementById("legend").style.display = "";
   if (detailTrigger) detailTrigger.focus();
 });
 svg.on("click", function() {
   detailPanel.classList.remove("visible");
+  document.getElementById("legend").style.display = "";
   if (detailTrigger) detailTrigger.focus();
 });
 function showDetailPanel(d) {
@@ -910,6 +912,7 @@ function showDetailPanel(d) {
   dpContent.textContent = "";
   dpContent.insertAdjacentHTML("beforeend", h);
   detailPanel.classList.add("visible");
+  document.getElementById("legend").style.display = "none";
   detailPanel.querySelector(".dp-close").focus();
   dpContent.querySelectorAll("li[data-qn]").forEach(function(li) {
     li.addEventListener("click", function() {
