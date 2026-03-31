@@ -448,7 +448,7 @@ export class GraphWebviewPanel {
       cursor: pointer;
     }
     #depth-slider:disabled {
-      opacity: 0.35;
+      opacity: 0.4;
       cursor: not-allowed;
     }
     #depth-value {

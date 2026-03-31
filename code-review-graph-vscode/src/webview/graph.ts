@@ -607,10 +607,8 @@ function updateDepthSliderState(): void {
   if (slider) {
     if (selectedNode) {
       slider.disabled = false;
-      slider.style.opacity = "1";
     } else {
       slider.disabled = true;
-      slider.style.opacity = "0.4";
       if (depthValue) depthValue.textContent = "N/A";
     }
   }
