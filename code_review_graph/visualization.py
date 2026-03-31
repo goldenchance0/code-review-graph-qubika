@@ -220,7 +220,7 @@ _HTML_TEMPLATE = r"""<!DOCTYPE html>
   .l-calls    { border-top: 2px solid #3fb950; }
   .l-imports  { border-top: 2px dashed #f0883e; }
   .l-inherits { border-top: 2.5px dotted #d2a8ff; }
-  .l-contains { border-top: 1.5px solid rgba(139,148,158,0.3); }
+  .l-contains { border-top: 1px solid rgba(139,148,158,0.3); }
   #stats-bar {
     position: absolute; bottom: 0; left: 0; right: 0;
     background: rgba(13,17,23,0.95); border-top: 1px solid #21262d;
@@ -324,6 +324,8 @@ _HTML_TEMPLATE = r"""<!DOCTYPE html>
   .filter-item { display: flex; align-items: center; gap: 8px; padding: 3px 0; cursor: pointer; user-select: none; }
   .filter-item input { accent-color: #58a6ff; cursor: pointer; }
   :focus-visible { outline: 2px solid #58a6ff; outline-offset: 2px; }
+  .filter-item input:focus-visible { outline: 2px solid #58a6ff; outline-offset: 2px; }
+  .dp-close:focus-visible { outline: 2px solid #58a6ff; outline-offset: 2px; }
   .filter-item:focus-within { outline: 2px solid #58a6ff; outline-offset: 2px; border-radius: 4px; }
   #help-overlay {
     position: fixed; inset: 0; background: rgba(0,0,0,0.6);
@@ -374,9 +376,17 @@ _HTML_TEMPLATE = r"""<!DOCTYPE html>
   button.legend-edge { background: none; border: none; color: #c9d1d9; font-size: 12px; font-family: inherit; }
   button.legend-edge:focus-visible { outline: 2px solid #58a6ff; outline-offset: 2px; border-radius: 4px; }
   .sr-item.sr-active { background: #30363d; }
+  .skip-link {
+    position: absolute; top: -40px; left: 16px; z-index: 100;
+    background: #1f6feb; color: #fff; padding: 8px 16px;
+    border-radius: 0 0 8px 8px; text-decoration: none; font-weight: 600;
+    transition: top 0.2s;
+  }
+  .skip-link:focus { top: 0; }
 </style>
 </head>
 <body>
+<a href="#graph-svg" class="skip-link">Skip to graph</a>
 <nav id="legend" aria-label="Graph legend">
   <h3>Nodes</h3>
   <div class="legend-section">
@@ -441,7 +451,7 @@ _HTML_TEMPLATE = r"""<!DOCTYPE html>
   <div class="empty-title">No nodes to display</div>
   <div class="empty-desc">The graph is empty. Run <strong>code-review-graph build</strong> to index your codebase, then regenerate the visualization.</div>
 </div>
-<svg role="img" aria-label="Interactive code knowledge graph visualization. Use search to find nodes, click files to expand."></svg>
+<svg id="graph-svg" tabindex="-1" role="img" aria-label="Interactive code knowledge graph visualization. Use search to find nodes, click files to expand."></svg>
 <script>
 "use strict";
 var graphData = __GRAPH_DATA__;
@@ -571,9 +581,9 @@ var simulation = d3.forceSimulation(nodes)
   .velocityDecay(0.4);
 var EDGE_CFG = {
   CONTAINS:     { dash:null, width:1, opacity:0.08, marker:"" },
-  CALLS:        { dash:null, width:1.5, opacity:0.7, marker:"url(#arrow-calls)" },
-  IMPORTS_FROM: { dash:"6,3", width:1.5, opacity:0.65, marker:"url(#arrow-imports)" },
-  INHERITS:     { dash:"3,4", width:2, opacity:0.7, marker:"url(#arrow-inherits)" },
+  CALLS:        { dash:null, width:2, opacity:0.7, marker:"url(#arrow-calls)" },
+  IMPORTS_FROM: { dash:"8,4", width:2, opacity:0.65, marker:"url(#arrow-imports)" },
+  INHERITS:     { dash:"2,6", width:2.5, opacity:0.7, marker:"url(#arrow-inherits)" },
   IMPLEMENTS:   { dash:"2,4", width:1.5, opacity:0.65, marker:"url(#arrow-implements)" },
   TESTED_BY:    { dash:null, width:1.5, opacity:0.6, marker:"url(#arrow-tested_by)" },
   DEPENDS_ON:   { dash:"8,3", width:1.5, opacity:0.6, marker:"url(#arrow-depends_on)" },
