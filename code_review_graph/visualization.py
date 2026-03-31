@@ -348,6 +348,11 @@ _HTML_TEMPLATE = r"""<!DOCTYPE html>
     border-radius: 5px; padding: 2px 7px; font-size: 11px; font-family: inherit;
     color: #e6edf3; box-shadow: inset 0 -1px 0 #0d1117; line-height: 1.6;
   }
+  .help-dismiss {
+    margin-top: 16px; display: block; text-align: center;
+    color: #8b949e; font-size: 12px; cursor: pointer;
+  }
+  .help-dismiss:hover { color: #e6edf3; }
   #loading-overlay {
     position: fixed; inset: 0; display: flex; align-items: center;
     justify-content: center; z-index: 50; background: rgba(13,17,23,0.85);
@@ -427,10 +432,22 @@ _HTML_TEMPLATE = r"""<!DOCTYPE html>
 <div id="detail-panel" role="dialog" aria-label="Node detail" aria-modal="false"><button class="dp-close" aria-label="Close detail panel">&times;</button><div id="dp-content" tabindex="-1"></div></div>
 <div id="stats-bar" role="status" aria-label="Graph statistics"></div>
 <div id="tooltip" role="tooltip" aria-live="polite"></div>
-<div id="help-overlay" class="hidden" role="dialog" aria-label="Keyboard shortcuts" aria-modal="true">
+<div id="help-overlay" class="hidden" role="dialog" aria-label="Help overlay" aria-modal="true">
   <div class="help-content">
-    <h2>Keyboard Shortcuts</h2>
+    <h2>Graph Interactions</h2>
     <button class="dp-close help-close" aria-label="Close help">&times;</button>
+    <table>
+      <tr><td>Click a file</td><td>Expand/collapse contained symbols</td></tr>
+      <tr><td>Click symbol</td><td>Show detail panel with callers/callees</td></tr>
+      <tr><td>Shift+click file</td><td>Show detail panel without toggling collapse</td></tr>
+      <tr><td>Hover</td><td>Highlight connected nodes and edges</td></tr>
+      <tr><td>Drag</td><td>Pin a node in place</td></tr>
+      <tr><td>Scroll</td><td>Zoom in/out</td></tr>
+      <tr><td>Click+drag background</td><td>Pan the view</td></tr>
+      <tr><td>Search</td><td>Type to filter &mdash; matching nodes stay bright</td></tr>
+      <tr><td>Legend edges</td><td>Click edge types in the legend to toggle visibility</td></tr>
+    </table>
+    <h2 style="margin-top:16px">Keyboard Shortcuts</h2>
     <table>
       <tr><td><kbd>/</kbd></td><td>Focus search</td></tr>
       <tr><td><kbd>?</kbd></td><td>Toggle this help</td></tr>
@@ -438,6 +455,7 @@ _HTML_TEMPLATE = r"""<!DOCTYPE html>
       <tr><td><kbd>Enter</kbd> / <kbd>Space</kbd></td><td>Activate focused node</td></tr>
       <tr><td><kbd>Arrow keys</kbd></td><td>Navigate between nodes</td></tr>
     </table>
+    <span class="help-dismiss">Click anywhere outside to dismiss</span>
   </div>
 </div>
 <div id="loading-overlay" aria-live="polite">

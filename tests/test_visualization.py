@@ -261,3 +261,15 @@ def test_generate_html_includes_node_shapes(store_with_data, tmp_path):
     assert "symbolTriangle" in content
     assert "symbolDiamond" in content
     assert "symbolCross" in content
+
+
+def test_generate_html_includes_help_overlay(store_with_data, tmp_path):
+    """Generated HTML should include a help overlay for onboarding."""
+    from code_review_graph.visualization import generate_html
+
+    output_path = tmp_path / "graph.html"
+    generate_html(store_with_data, output_path)
+    content = output_path.read_text()
+    assert "help-overlay" in content
+    assert "btn-help" in content
+    assert "Click a file" in content
