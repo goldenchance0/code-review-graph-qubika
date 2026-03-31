@@ -598,7 +598,7 @@ var simulation = d3.forceSimulation(nodes)
   .alphaDecay(isLarge ? 0.04 : 0.025)
   .velocityDecay(0.4);
 var EDGE_CFG = {
-  CONTAINS:     { dash:null, width:1, opacity:0.08, marker:"" },
+  CONTAINS:     { dash:null, width:1, opacity:0.14, marker:"" },
   CALLS:        { dash:null, width:2, opacity:0.7, marker:"url(#arrow-calls)" },
   IMPORTS_FROM: { dash:"8,4", width:2, opacity:0.65, marker:"url(#arrow-imports)" },
   INHERITS:     { dash:"2,6", width:2.5, opacity:0.7, marker:"url(#arrow-inherits)" },
