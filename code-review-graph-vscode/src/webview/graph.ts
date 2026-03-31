@@ -93,12 +93,13 @@ const NODE_SHAPE: Record<NodeKind, d3.SymbolType> = {
   Type: d3.symbolCross,
 };
 
-function shapeSize(kind: NodeKind): number {
-  const r = NODE_RADIUS[kind] ?? 10;
-  return Math.PI * r * r;
-}
-
-const symbolGen = d3.symbol();
+const NODE_AREA: Record<NodeKind, number> = {
+  File: 616,
+  Class: 452,
+  Function: 314,
+  Test: 314,
+  Type: 314,
+};
 
 const EDGE_COLOR: Record<EdgeKind, string> = {
   CALLS: "#3fb950",
@@ -200,7 +201,7 @@ function createSvg(): void {
 
   // Initialize empty selections
   linkSelection = linkGroup.selectAll<SVGLineElement, SimLink>("line");
-  nodeSelection = nodeGroup.selectAll<SVGPathElement, SimNode>("path");
+  nodeSelection = nodeGroup.selectAll<SVGPathElement, SimNode>("path.node-shape");
   labelSelection = labelGroup.selectAll<SVGTextElement, SimNode>("text");
 
   // Zoom + pan
@@ -259,6 +260,14 @@ function setData(nodes: GraphNode[], edges: GraphEdge[]): void {
   }
 
   buildGraph();
+
+  // Show/hide empty state
+  const emptyState = document.getElementById("empty-state");
+  if (emptyState) {
+    emptyState.style.display = allNodes.length === 0 ? "block" : "none";
+  }
+
+  updateDepthSliderState();
 }
 
 // ---------------------------------------------------------------------------
@@ -385,10 +394,11 @@ function buildGraph(): void {
 
   // --- Nodes ---
   nodeSelection = nodeGroup
-    .selectAll<SVGPathElement, SimNode>("path")
+    .selectAll<SVGPathElement, SimNode>("path.node-shape")
     .data(nodes, (d) => d.qualifiedName)
     .join("path")
-    .attr("d", (d) => symbolGen.type(NODE_SHAPE[d.kind] ?? d3.symbolCircle).size(shapeSize(d.kind))()!)
+    .attr("class", "node-shape")
+    .attr("d", (d) => d3.symbol().type(NODE_SHAPE[d.kind] ?? d3.symbolCircle).size(NODE_AREA[d.kind] ?? 314)()!)
     .attr("fill", (d) => NODE_COLOR[d.kind] ?? "#cdd6f4")
     .attr("stroke", "none")
     .attr("stroke-width", 2)
@@ -523,6 +533,22 @@ function selectNode(node: SimNode): void {
   nodeSelection.attr("stroke", (d) =>
     d.qualifiedName === node.qualifiedName ? "#e6edf3" : "none"
   );
+  updateDepthSliderState();
+}
+
+function updateDepthSliderState(): void {
+  const slider = document.getElementById("depth-slider") as HTMLInputElement | null;
+  const depthValue = document.getElementById("depth-value");
+  if (slider) {
+    if (selectedNode) {
+      slider.disabled = false;
+      slider.style.opacity = "1";
+    } else {
+      slider.disabled = true;
+      slider.style.opacity = "0.4";
+      if (depthValue) depthValue.textContent = "N/A";
+    }
+  }
 }
 
 function highlightConnected(node: SimNode): void {
@@ -749,15 +775,21 @@ function bindToolbarEvents(): void {
   for (const kind of ALL_EDGE_KINDS) {
     const pill = document.getElementById(`edge-${kind}`);
     if (pill) {
-      pill.addEventListener("click", () => {
+      const toggle = () => {
         if (visibleEdgeKinds.has(kind)) {
           visibleEdgeKinds.delete(kind);
           pill.classList.remove("active");
+          pill.setAttribute("aria-pressed", "false");
         } else {
           visibleEdgeKinds.add(kind);
           pill.classList.add("active");
+          pill.setAttribute("aria-pressed", "true");
         }
         buildGraph();
+      };
+      pill.addEventListener("click", toggle);
+      pill.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); toggle(); }
       });
     }
   }
