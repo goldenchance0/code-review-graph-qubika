@@ -516,12 +516,12 @@ export class GraphWebviewPanel {
     #tooltip .tooltip-params {
       font-family: var(--font-mono);
       font-size: 11px;
-      color: #a6e3a1;
+      color: var(--vscode-terminal-ansiGreen, #3fb950);
     }
     #tooltip .tooltip-return {
       font-family: var(--font-mono);
       font-size: 11px;
-      color: #89b4fa;
+      color: var(--vscode-terminal-ansiBlue, #58a6ff);
     }
 
     /* ------------------------------------------------------------------ */
@@ -549,12 +549,12 @@ export class GraphWebviewPanel {
     <!-- Edge type pills -->
     <div class="toolbar-group" id="edge-pills">
       <span class="toolbar-label">Edges</span>
-      <span id="edge-CALLS" class="edge-pill active" style="color:#a6e3a1"><span class="pill-dot" style="background:#a6e3a1"></span>Calls</span>
-      <span id="edge-IMPORTS_FROM" class="edge-pill active" style="color:#89b4fa"><span class="pill-dot" style="background:#89b4fa"></span>Imports</span>
-      <span id="edge-INHERITS" class="edge-pill active" style="color:#cba6f7"><span class="pill-dot" style="background:#cba6f7"></span>Inherits</span>
+      <span id="edge-CALLS" class="edge-pill active" style="color:#3fb950"><span class="pill-dot" style="background:#3fb950"></span>Calls</span>
+      <span id="edge-IMPORTS_FROM" class="edge-pill active" style="color:#f0883e"><span class="pill-dot" style="background:#f0883e"></span>Imports</span>
+      <span id="edge-INHERITS" class="edge-pill active" style="color:#d2a8ff"><span class="pill-dot" style="background:#d2a8ff"></span>Inherits</span>
       <span id="edge-IMPLEMENTS" class="edge-pill active" style="color:#f9e2af"><span class="pill-dot" style="background:#f9e2af"></span>Implements</span>
       <span id="edge-TESTED_BY" class="edge-pill active" style="color:#f38ba8"><span class="pill-dot" style="background:#f38ba8"></span>Tested</span>
-      <span id="edge-CONTAINS" class="edge-pill active" style="color:#585b70"><span class="pill-dot" style="background:#585b70"></span>Contains</span>
+      <span id="edge-CONTAINS" class="edge-pill active" style="color:#8b949e"><span class="pill-dot" style="background:#8b949e"></span>Contains</span>
       <span id="edge-DEPENDS_ON" class="edge-pill active" style="color:#fab387"><span class="pill-dot" style="background:#fab387"></span>Depends</span>
     </div>
 

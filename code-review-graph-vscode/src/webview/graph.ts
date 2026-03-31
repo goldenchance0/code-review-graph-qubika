@@ -70,28 +70,28 @@ interface SimLink extends d3.SimulationLinkDatum<SimNode> {
 // ---------------------------------------------------------------------------
 
 const NODE_RADIUS: Record<NodeKind, number> = {
-  File: 14,
+  File: 18,
   Class: 12,
-  Function: 10,
-  Test: 10,
-  Type: 10,
+  Function: 6,
+  Test: 6,
+  Type: 5,
 };
 
 const NODE_COLOR: Record<NodeKind, string> = {
-  File: "#cba6f7",
-  Class: "#f9e2af",
-  Function: "#a6e3a1",
-  Test: "#89b4fa",
-  Type: "#fab387",
+  File: "#58a6ff",
+  Class: "#f0883e",
+  Function: "#3fb950",
+  Test: "#d2a8ff",
+  Type: "#8b949e",
 };
 
 const EDGE_COLOR: Record<EdgeKind, string> = {
-  CALLS: "#a6e3a1",
-  IMPORTS_FROM: "#89b4fa",
-  INHERITS: "#cba6f7",
+  CALLS: "#3fb950",
+  IMPORTS_FROM: "#f0883e",
+  INHERITS: "#d2a8ff",
   IMPLEMENTS: "#f9e2af",
   TESTED_BY: "#f38ba8",
-  CONTAINS: "#585b70",
+  CONTAINS: "rgba(139,148,158,0.15)",
   DEPENDS_ON: "#fab387",
 };
 
@@ -433,19 +433,19 @@ function buildGraph(): void {
       const matches =
         d.name.toLowerCase().includes(query) ||
         d.qualifiedName.toLowerCase().includes(query);
-      return matches ? "#f5e0dc" : "none";
+      return matches ? "#e6edf3" : "none";
     });
   }
 
   // Highlight selected node
   if (selectedNode) {
     nodeSelection.attr("stroke", (d) => {
-      if (d.qualifiedName === selectedNode!.qualifiedName) return "#f5e0dc";
+      if (d.qualifiedName === selectedNode!.qualifiedName) return "#e6edf3";
       if (query.length > 0) {
         const matches =
           d.name.toLowerCase().includes(query) ||
           d.qualifiedName.toLowerCase().includes(query);
-        return matches ? "#f5e0dc" : "none";
+        return matches ? "#e6edf3" : "none";
       }
       return "none";
     });
@@ -506,7 +506,7 @@ function buildGraph(): void {
 function selectNode(node: SimNode): void {
   selectedNode = node;
   nodeSelection.attr("stroke", (d) =>
-    d.qualifiedName === node.qualifiedName ? "#f5e0dc" : "none"
+    d.qualifiedName === node.qualifiedName ? "#e6edf3" : "none"
   );
 }
 
@@ -613,7 +613,7 @@ function highlightNodeByName(qualifiedName: string): void {
     .attr("cy", node.y ?? 0)
     .attr("r", (NODE_RADIUS[node.kind] ?? 10) + 4)
     .attr("fill", "none")
-    .attr("stroke", "#f5e0dc")
+    .attr("stroke", "#e6edf3")
     .attr("stroke-width", 3)
     .attr("class", "pulse-ring");
 
@@ -636,7 +636,7 @@ function highlightNodeByName(qualifiedName: string): void {
       .attr("cy", node.y ?? 0)
       .attr("r", (NODE_RADIUS[node.kind] ?? 10) + 4)
       .attr("fill", "none")
-      .attr("stroke", "#f5e0dc")
+      .attr("stroke", "#e6edf3")
       .attr("stroke-width", 3);
 
     ring2
