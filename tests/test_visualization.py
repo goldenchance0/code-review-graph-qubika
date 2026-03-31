@@ -247,6 +247,12 @@ def test_generate_html_includes_interactive_features(store_with_data, tmp_path):
     assert "filter-panel" in content
     # Search results dropdown
     assert "search-results" in content
+    # Accessibility: skip link
+    assert "skip-link" in content
+    # Accessibility: live region
+    assert 'aria-live="polite"' in content
+    # Node shapes mapping
+    assert "KIND_SHAPE" in content
 
 
 def test_generate_html_includes_node_shapes(store_with_data, tmp_path):
@@ -273,3 +279,39 @@ def test_generate_html_includes_help_overlay(store_with_data, tmp_path):
     assert "help-overlay" in content
     assert "btn-help" in content
     assert "Click a file" in content
+
+
+def test_generate_html_includes_aria_attributes(store_with_data, tmp_path):
+    """Generated HTML should include key ARIA attributes for accessibility."""
+    from code_review_graph.visualization import generate_html
+
+    output_path = tmp_path / "graph.html"
+    generate_html(store_with_data, output_path)
+    content = output_path.read_text()
+    assert 'role="tooltip"' in content
+    assert 'role="dialog"' in content
+    assert 'role="listbox"' in content
+    assert 'aria-pressed="false"' in content  # community button
+    assert 'aria-modal="false"' in content  # detail panel
+
+
+def test_generate_html_includes_loading_and_empty_state(store_with_data, tmp_path):
+    """Generated HTML should include loading overlay and empty state markup."""
+    from code_review_graph.visualization import generate_html
+
+    output_path = tmp_path / "graph.html"
+    generate_html(store_with_data, output_path)
+    content = output_path.read_text()
+    assert "loading-overlay" in content
+    assert "empty-state" in content
+    assert "No nodes to display" in content
+
+
+def test_generate_html_includes_focus_visible(store_with_data, tmp_path):
+    """Generated HTML should include :focus-visible styles."""
+    from code_review_graph.visualization import generate_html
+
+    output_path = tmp_path / "graph.html"
+    generate_html(store_with_data, output_path)
+    content = output_path.read_text()
+    assert ":focus-visible" in content
