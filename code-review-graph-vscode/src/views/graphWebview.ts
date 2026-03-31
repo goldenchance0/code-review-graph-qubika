@@ -428,6 +428,10 @@ export class GraphWebviewPanel {
       accent-color: var(--btn-bg);
       cursor: pointer;
     }
+    #depth-slider:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
     #depth-value {
       font-size: 11px;
       font-family: var(--font-mono);
@@ -566,7 +570,7 @@ export class GraphWebviewPanel {
     <!-- Depth slider -->
     <div class="toolbar-group">
       <span class="toolbar-label">Depth</span>
-      <input id="depth-slider" type="range" min="0" max="10" value="0" title="Filter to nodes within N hops of the selected node" />
+      <input id="depth-slider" type="range" min="0" max="10" value="0" disabled title="Select a node first, then adjust depth" />
       <span id="depth-value">All</span>
     </div>
 

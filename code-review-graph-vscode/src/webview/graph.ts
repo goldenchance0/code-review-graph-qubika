@@ -259,13 +259,24 @@ function setData(nodes: GraphNode[], edges: GraphEdge[]): void {
     depthValue.textContent = "All";
   }
 
-  buildGraph();
-
   // Show/hide empty state
   const emptyState = document.getElementById("empty-state");
-  if (emptyState) {
-    emptyState.style.display = allNodes.length === 0 ? "block" : "none";
+  const graphArea = document.getElementById("graph-area");
+  if (nodes.length === 0) {
+    if (emptyState) emptyState.style.display = "block";
+    if (graphArea) {
+      // Hide the SVG but keep the container
+      const svgHide = graphArea.querySelector("svg");
+      if (svgHide) svgHide.style.display = "none";
+    }
+    updateDepthSliderState();
+    return;
   }
+  if (emptyState) emptyState.style.display = "none";
+  const svgEl = graphArea?.querySelector("svg");
+  if (svgEl) svgEl.style.display = "";
+
+  buildGraph();
 
   updateDepthSliderState();
 }
