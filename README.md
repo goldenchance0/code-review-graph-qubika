@@ -246,25 +246,50 @@ code-review-graph serve            # Start MCP server
 <summary><strong>Multi-repo daemon</strong></summary>
 <br>
 
-The multi-repo watch daemon is included with `code-review-graph` — no separate
-install required. Watch multiple repositories simultaneously with a single daemon
-process:
+If your editor doesn't support hooks (e.g. Cursor, OpenCode), or you just want your
+graph to stay fresh in the background without any editor integration, the daemon is
+for you. It watches your repos for file changes and automatically rebuilds the graph
+— no manual `build` or `update` commands needed.
+
+The daemon is included with `code-review-graph` — no separate install required.
+
+**Quick setup:**
 
 ```bash
+# 1. Register the repos you want to watch
 crg-daemon add ~/project-a --alias proj-a
 crg-daemon add ~/project-b
-crg-daemon start                  # spawns one watcher process per repo
-crg-daemon status                 # shows daemon status and per-repo liveness
+
+# 2. Start the daemon (runs in the background)
+crg-daemon start
+
+# 3. That's it — graphs stay up to date automatically
+crg-daemon status                 # check daemon and per-repo watcher status
 crg-daemon logs --repo proj-a -f  # tail logs for a specific repo
 crg-daemon stop                   # stop daemon and all watcher processes
 ```
 
 Also available as `code-review-graph daemon start|stop|status|...`.
 
-Config lives in `~/.code-review-graph/watch.toml`. The daemon watches this file
-and automatically starts/stops watcher processes when repos change. Health checks
-every 30 seconds restart dead watchers. No external dependencies (tmux, screen,
-etc.) required.
+Under the hood, `crg-daemon add` writes to a TOML config file at
+`~/.code-review-graph/watch.toml`. You can also edit this file directly:
+
+```toml
+[[repos]]
+path = "/home/user/project-a"
+alias = "proj-a"
+
+[[repos]]
+path = "/home/user/project-b"
+alias = "project-b"
+```
+
+The daemon monitors this config file for changes and automatically starts/stops
+watcher processes as repos are added or removed. Health checks every 30 seconds
+restart dead watchers. No external dependencies required.
+
+See [docs/COMMANDS.md](docs/COMMANDS.md#standalone-daemon-cli-crg-daemon) for the
+full config reference and all available options.
 
 </details>
 
