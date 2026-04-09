@@ -196,6 +196,7 @@ The blast-radius analysis never misses an actually impacted file (perfect recall
 | **Refactoring tools** | Rename preview, dead code detection, community-driven suggestions |
 | **Wiki generation** | Auto-generate markdown wiki from community structure |
 | **Multi-repo registry** | Register multiple repos, search across all of them |
+| **Multi-repo daemon** | `crg-daemon` watches multiple repos as child processes, with health checks and auto-restart |
 | **MCP prompts** | 5 workflow templates: review, architecture, debug, onboard, pre-merge |
 | **Full-text search** | FTS5-powered hybrid search combining keyword and vector similarity |
 
@@ -232,9 +233,36 @@ code-review-graph detect-changes   # Risk-scored change impact analysis
 code-review-graph register <path>  # Register repo in multi-repo registry
 code-review-graph unregister <id>  # Remove repo from registry
 code-review-graph repos            # List registered repositories
+code-review-graph daemon start     # Start multi-repo watch daemon
+code-review-graph daemon stop      # Stop the daemon
+code-review-graph daemon status    # Show daemon status and repos
 code-review-graph eval             # Run evaluation benchmarks
 code-review-graph serve            # Start MCP server
 ```
+
+</details>
+
+<details>
+<summary><strong>Multi-repo daemon</strong></summary>
+<br>
+
+Watch multiple repositories simultaneously with a single daemon process:
+
+```bash
+crg-daemon add ~/project-a --alias proj-a
+crg-daemon add ~/project-b
+crg-daemon start                  # spawns one watcher process per repo
+crg-daemon status                 # shows daemon status and per-repo liveness
+crg-daemon logs --repo proj-a -f  # tail logs for a specific repo
+crg-daemon stop                   # stop daemon and all watcher processes
+```
+
+Also available as `code-review-graph daemon start|stop|status|...`.
+
+Config lives in `~/.code-review-graph/watch.toml`. The daemon watches this file
+and automatically starts/stops watcher processes when repos change. Health checks
+every 30 seconds restart dead watchers. No external dependencies (tmux, screen,
+etc.) required.
 
 </details>
 
