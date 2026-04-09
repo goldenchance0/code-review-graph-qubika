@@ -331,7 +331,7 @@ def generate_skills(repo_root: Path, skills_dir: Path | None = None) -> Path:
     return skills_dir
 
 
-def generate_hooks_config() -> dict[str, Any]:
+def generate_hooks_config(repo_root: Path) -> dict[str, Any]:
     """Generate Claude Code hooks configuration.
 
     Returns a hooks config dict with PostToolUse, SessionStart, and
@@ -340,25 +340,34 @@ def generate_hooks_config() -> dict[str, Any]:
     Returns:
         Dict with hooks configuration suitable for .claude/settings.json.
     """
+    repo_arg = json.dumps(repo_root.resolve().as_posix())
     return {
         "hooks": {
             "PostToolUse": [
                 {
                     "matcher": "Edit|Write|Bash",
-                    "command": "code-review-graph update --skip-flows",
-                    "timeout": 5000,
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": (
+                                f"code-review-graph update --skip-flows "
+                                f"--repo {repo_arg}"
+                            ),
+                            "timeout": 5000,
+                        }
+                    ],
                 },
             ],
             "SessionStart": [
                 {
-                    "command": "code-review-graph status",
-                    "timeout": 3000,
-                },
-            ],
-            "PreCommit": [
-                {
-                    "command": "code-review-graph detect-changes --brief",
-                    "timeout": 10000,
+                    "matcher": "",
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "command": f"code-review-graph status --repo {repo_arg}",
+                            "timeout": 3000,
+                        }
+                    ],
                 },
             ],
         }
@@ -385,7 +394,7 @@ def install_hooks(repo_root: Path) -> None:
         except (json.JSONDecodeError, OSError) as exc:
             logger.warning("Could not read existing %s: %s", settings_path, exc)
 
-    hooks_config = generate_hooks_config()
+    hooks_config = generate_hooks_config(repo_root)
     existing.update(hooks_config)
 
     settings_path.write_text(json.dumps(existing, indent=2) + "\n", encoding="utf-8")

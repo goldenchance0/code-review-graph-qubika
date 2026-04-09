@@ -1,11 +1,13 @@
 """Tests for skills and hooks auto-install."""
 
 import json
+from pathlib import Path
 from unittest.mock import patch
 
 from code_review_graph.skills import (
     _CLAUDE_MD_SECTION_MARKER,
     PLATFORMS,
+    _build_server_entry,
     generate_hooks_config,
     generate_skills,
     inject_claude_md,
@@ -78,38 +80,41 @@ class TestGenerateSkills:
 
 class TestGenerateHooksConfig:
     def test_returns_dict_with_hooks(self):
-        config = generate_hooks_config()
+        config = generate_hooks_config(Path("/repo"))
         assert "hooks" in config
 
     def test_has_post_tool_use(self):
-        config = generate_hooks_config()
+        config = generate_hooks_config(Path("/repo"))
         assert "PostToolUse" in config["hooks"]
         hooks = config["hooks"]["PostToolUse"]
         assert len(hooks) >= 1
         assert hooks[0]["matcher"] == "Edit|Write|Bash"
-        assert "update" in hooks[0]["command"]
-        assert hooks[0]["timeout"] == 5000
+        assert hooks[0]["hooks"][0]["type"] == "command"
+        assert hooks[0]["hooks"][0]["command"].endswith('--repo "E:/repo"')
+        assert hooks[0]["hooks"][0]["timeout"] == 5000
 
     def test_has_session_start(self):
-        config = generate_hooks_config()
+        config = generate_hooks_config(Path("/repo"))
         assert "SessionStart" in config["hooks"]
         hooks = config["hooks"]["SessionStart"]
         assert len(hooks) >= 1
-        assert "status" in hooks[0]["command"]
-        assert hooks[0]["timeout"] == 3000
+        assert hooks[0]["matcher"] == ""
+        assert hooks[0]["hooks"][0]["command"].endswith('--repo "E:/repo"')
+        assert hooks[0]["hooks"][0]["timeout"] == 3000
 
-    def test_has_pre_commit(self):
-        config = generate_hooks_config()
-        assert "PreCommit" in config["hooks"]
-        hooks = config["hooks"]["PreCommit"]
-        assert len(hooks) >= 1
-        assert "detect-changes" in hooks[0]["command"]
-        assert hooks[0]["timeout"] == 10000
+    def test_quotes_repo_paths_with_spaces(self):
+        config = generate_hooks_config(Path("/repo with spaces"))
+        command = config["hooks"]["PostToolUse"][0]["hooks"][0]["command"]
+        assert '--repo "E:/repo with spaces"' in command
 
-    def test_has_all_three_hook_types(self):
-        config = generate_hooks_config()
+    def test_does_not_emit_invalid_pre_commit_hook(self):
+        config = generate_hooks_config(Path("/repo"))
+        assert "PreCommit" not in config["hooks"]
+
+    def test_has_only_valid_hook_types(self):
+        config = generate_hooks_config(Path("/repo"))
         hook_types = set(config["hooks"].keys())
-        assert hook_types == {"PostToolUse", "SessionStart", "PreCommit"}
+        assert hook_types == {"PostToolUse", "SessionStart"}
 
 
 class TestInstallHooks:
@@ -132,7 +137,7 @@ class TestInstallHooks:
         assert data["customSetting"] is True
         assert "PostToolUse" in data["hooks"]
         assert "SessionStart" in data["hooks"]
-        assert "PreCommit" in data["hooks"]
+        assert "PreCommit" not in data["hooks"]
 
     def test_creates_claude_directory(self, tmp_path):
         install_hooks(tmp_path)
@@ -183,6 +188,14 @@ class TestInjectClaudeMd:
 
 
 class TestInstallPlatformConfigs:
+    def test_build_server_entry_includes_repo_target(self):
+        entry = _build_server_entry(
+            PLATFORMS["claude"],
+            key="claude",
+            repo_target="grimoirescribe",
+        )
+        assert entry["args"][-2:] == ["--repo", "grimoirescribe"]
+
     def test_install_cursor_config(self, tmp_path):
         with patch.dict(PLATFORMS, {
             "cursor": {**PLATFORMS["cursor"], "detect": lambda: True},
@@ -307,3 +320,23 @@ class TestInstallPlatformConfigs:
             install_platform_configs(tmp_path, target="continue")
         data = json.loads(config_path.read_text())
         assert len(data["mcpServers"]) == 1
+
+    def test_install_claude_user_scope_uses_cli(self, tmp_path):
+        with patch("code_review_graph.skills.shutil.which") as mock_which:
+            mock_which.side_effect = lambda name: name
+            with patch("code_review_graph.skills.subprocess.run") as mock_run:
+                configured = install_platform_configs(
+                    tmp_path,
+                    target="claude",
+                    scope="user",
+                    repo_target="grimoirescribe",
+                )
+
+        assert configured == ["Claude Code (user)"]
+        assert mock_run.call_count == 2
+        add_cmd = mock_run.call_args_list[1].args[0]
+        assert add_cmd[:6] == [
+            "claude", "mcp", "add-json", "--scope", "user", "code-review-graph",
+        ]
+        assert "--repo" in add_cmd[-1]
+        assert "grimoirescribe" in add_cmd[-1]
