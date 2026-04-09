@@ -10,6 +10,7 @@ No external dependencies beyond Python stdlib — no tmux required.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import shutil
@@ -39,6 +40,7 @@ logger = logging.getLogger(__name__)
 
 CONFIG_PATH: Path = Path.home() / ".code-review-graph" / "watch.toml"
 PID_PATH: Path = Path.home() / ".code-review-graph" / "daemon.pid"
+STATE_PATH: Path = Path.home() / ".code-review-graph" / "daemon-state.json"
 _HEALTH_CHECK_INTERVAL = 30
 
 # ---------------------------------------------------------------------------
@@ -319,6 +321,37 @@ def is_daemon_running(path: Path | None = None) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Child state persistence (for cross-process status queries)
+# ---------------------------------------------------------------------------
+
+
+def load_state(path: Path | None = None) -> dict[str, Any]:
+    """Load persisted child process state from disk.
+
+    Returns a dict mapping alias to ``{"pid": int, "path": str}``.
+    Returns an empty dict if the file is missing or corrupt.
+    """
+    state_path = path or STATE_PATH
+    if not state_path.exists():
+        return {}
+    try:
+        return json.loads(state_path.read_text(encoding="utf-8"))  # type: ignore[no-any-return]
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def _is_pid_alive(pid: int) -> bool:
+    """Check whether a process with the given PID is running."""
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True  # exists but owned by another user
+
+
+# ---------------------------------------------------------------------------
 # ConfigWatcher — monitors config file for live changes
 # ---------------------------------------------------------------------------
 
@@ -449,6 +482,7 @@ class WatchDaemon:
     ) -> None:
         self._config: DaemonConfig = config or load_config(config_path)
         self._config_path: Path = config_path or CONFIG_PATH
+        self._state_path: Path = STATE_PATH
         self._children: dict[str, subprocess.Popen[bytes]] = {}
         self._current_repos: dict[str, WatchRepo] = {}
         self._config_watcher: ConfigWatcher | None = None
@@ -484,6 +518,9 @@ class WatchDaemon:
         # Track current state
         self._current_repos = {r.alias: r for r in self._config.repos}
 
+        # Persist child PIDs to disk for cross-process status queries
+        self._save_state()
+
         # Start watching the config file for live changes
         self.start_config_watcher()
 
@@ -505,6 +542,7 @@ class WatchDaemon:
             self._children.clear()
 
         self._current_repos.clear()
+        self._clear_state()
         clear_pid()
         logger.info("Daemon stopped")
 
@@ -551,6 +589,9 @@ class WatchDaemon:
                 self._start_watcher(repo)
                 self._current_repos[alias] = repo
 
+        # Persist updated state
+        self._save_state()
+
         logger.info(
             "Reconcile complete — added: %d, removed: %d, updated: %d",
             len(to_add),
@@ -559,20 +600,43 @@ class WatchDaemon:
         )
 
     def status(self) -> dict[str, Any]:
-        """Return a summary of daemon state."""
+        """Return a summary of daemon state.
+
+        When called from the daemon process itself, uses the in-memory
+        ``_children`` dict.  When called from a separate process (e.g. the
+        CLI ``status`` command), falls back to the persisted state file and
+        checks liveness via ``os.kill(pid, 0)``.
+        """
         repos: list[dict[str, Any]] = []
         with self._lock:
-            for alias, repo in self._current_repos.items():
-                proc = self._children.get(alias)
-                alive = proc is not None and proc.poll() is None
-                repos.append(
-                    {
-                        "alias": alias,
-                        "path": repo.path,
-                        "alive": alive,
-                        "pid": proc.pid if proc is not None else None,
-                    }
-                )
+            if self._children:
+                # In-process: we have live Popen handles
+                for alias, repo in self._current_repos.items():
+                    proc = self._children.get(alias)
+                    alive = proc is not None and proc.poll() is None
+                    repos.append(
+                        {
+                            "alias": alias,
+                            "path": repo.path,
+                            "alive": alive,
+                            "pid": proc.pid if proc is not None else None,
+                        }
+                    )
+            else:
+                # Cross-process: read persisted state from disk
+                state = load_state(self._state_path)
+                for repo in self._config.repos:
+                    entry = state.get(repo.alias, {})
+                    pid: int | None = entry.get("pid")
+                    alive = pid is not None and _is_pid_alive(pid)
+                    repos.append(
+                        {
+                            "alias": repo.alias,
+                            "path": repo.path,
+                            "alive": alive,
+                            "pid": pid,
+                        }
+                    )
         return {
             "session_name": self._config.session_name,
             "running": True,
@@ -646,6 +710,7 @@ class WatchDaemon:
 
     def _check_health(self) -> None:
         """Check each watcher child and restart if dead."""
+        restarted = False
         with self._lock:
             for alias, repo in list(self._current_repos.items()):
                 proc = self._children.get(alias)
@@ -654,6 +719,9 @@ class WatchDaemon:
                     # Clean up dead process entry
                     self._children.pop(alias, None)
                     self._start_watcher(repo)
+                    restarted = True
+        if restarted:
+            self._save_state()
 
     # ------------------------------------------------------------------
     # Daemonization
@@ -747,6 +815,32 @@ class WatchDaemon:
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    def _save_state(self) -> None:
+        """Persist child PIDs and repo paths to disk for cross-process queries.
+
+        Called after any mutation of ``_children`` so that ``status`` commands
+        running in a separate process can determine which watchers are alive.
+        """
+        state: dict[str, dict[str, Any]] = {}
+        for alias, proc in self._children.items():
+            repo = self._current_repos.get(alias)
+            state[alias] = {
+                "pid": proc.pid,
+                "path": repo.path if repo else "",
+            }
+        try:
+            self._state_path.parent.mkdir(parents=True, exist_ok=True)
+            self._state_path.write_text(json.dumps(state), encoding="utf-8")
+        except OSError:
+            logger.warning("Failed to persist daemon state to %s", self._state_path)
+
+    def _clear_state(self) -> None:
+        """Remove the state file from disk."""
+        try:
+            self._state_path.unlink(missing_ok=True)
+        except OSError:
+            pass
 
     def _start_watcher(self, repo: WatchRepo) -> None:
         """Spawn a child process running ``code-review-graph watch`` for *repo*."""

@@ -103,7 +103,7 @@ def _handle_restart(args: argparse.Namespace) -> None:
 
 def _handle_status(_args: argparse.Namespace) -> None:
     """Show daemon status and configuration."""
-    from .daemon import is_daemon_running, load_config, read_pid
+    from .daemon import is_daemon_running, load_config, load_state, read_pid
 
     config = load_config()
     running = is_daemon_running()
@@ -129,18 +129,24 @@ def _handle_status(_args: argparse.Namespace) -> None:
     alias_width = max(alias_width, 5)  # minimum "Alias" header width
 
     if running:
-        from .daemon import WatchDaemon
-
-        daemon = WatchDaemon(config=config)
-        status_info = daemon.status()
-        repo_status: dict[str, bool] = {r["alias"]: r["alive"] for r in status_info["repos"]}
-
-        print(f"  {'Alias':<{alias_width}}  {'Status':<8}  Path")
-        print(f"  {'-' * alias_width}  {'-' * 8}  {'-' * 40}")
+        state = load_state()
+        print(f"  {'Alias':<{alias_width}}  {'Status':<8}  {'PID':<8}  Path")
+        print(f"  {'-' * alias_width}  {'-' * 8}  {'-' * 8}  {'-' * 40}")
         for repo in config.repos:
-            alive = repo_status.get(repo.alias, False)
+            entry = state.get(repo.alias, {})
+            child_pid: int | None = entry.get("pid")
+            alive = False
+            if child_pid is not None:
+                try:
+                    os.kill(child_pid, 0)
+                    alive = True
+                except ProcessLookupError:
+                    alive = False
+                except PermissionError:
+                    alive = True
             status_str = "alive" if alive else "dead"
-            print(f"  {repo.alias:<{alias_width}}  {status_str:<8}  {repo.path}")
+            pid_str = str(child_pid) if child_pid is not None else "-"
+            print(f"  {repo.alias:<{alias_width}}  {status_str:<8}  {pid_str:<8}  {repo.path}")
     else:
         print(f"  {'Alias':<{alias_width}}  Path")
         print(f"  {'-' * alias_width}  {'-' * 40}")

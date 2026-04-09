@@ -14,6 +14,7 @@ from code_review_graph.daemon import (
     clear_pid,
     is_daemon_running,
     load_config,
+    load_state,
     read_pid,
     remove_repo_from_config,
     save_config,
@@ -371,9 +372,11 @@ class TestWatchDaemon:
         """New repo in config spawns a new child process."""
         daemon = daemon_env["daemon"]
         config = daemon_env["config"]
+        daemon._state_path = daemon_env["tmp_path"] / "daemon-state.json"
 
         # Simulate initial state with only alpha
         mock_alpha = MagicMock()
+        mock_alpha.pid = 100
         mock_alpha.poll.return_value = None
         daemon._current_repos = {"alpha": config.repos[0]}
         daemon._children = {"alpha": mock_alpha}
@@ -394,11 +397,14 @@ class TestWatchDaemon:
         """Removed repo from config terminates the child process."""
         daemon = daemon_env["daemon"]
         config = daemon_env["config"]
+        daemon._state_path = daemon_env["tmp_path"] / "daemon-state.json"
 
         # Current state has both repos
         mock_alpha = MagicMock()
+        mock_alpha.pid = 100
         mock_alpha.poll.return_value = None
         mock_beta = MagicMock()
+        mock_beta.pid = 200
         mock_beta.poll.return_value = None
         daemon._current_repos = {r.alias: r for r in config.repos}
         daemon._children = {"alpha": mock_alpha, "beta": mock_beta}
@@ -420,10 +426,13 @@ class TestWatchDaemon:
         """No changes means no processes started or stopped."""
         daemon = daemon_env["daemon"]
         config = daemon_env["config"]
+        daemon._state_path = daemon_env["tmp_path"] / "daemon-state.json"
 
         mock_alpha = MagicMock()
+        mock_alpha.pid = 100
         mock_alpha.poll.return_value = None
         mock_beta = MagicMock()
+        mock_beta.pid = 200
         mock_beta.poll.return_value = None
         daemon._current_repos = {r.alias: r for r in config.repos}
         daemon._children = {"alpha": mock_alpha, "beta": mock_beta}
@@ -438,10 +447,13 @@ class TestWatchDaemon:
         """Same alias but different path = terminate + new child."""
         daemon = daemon_env["daemon"]
         config = daemon_env["config"]
+        daemon._state_path = daemon_env["tmp_path"] / "daemon-state.json"
 
         mock_alpha = MagicMock()
+        mock_alpha.pid = 100
         mock_alpha.poll.return_value = None
         mock_beta = MagicMock()
+        mock_beta.pid = 200
         mock_beta.poll.return_value = None
         daemon._current_repos = {r.alias: r for r in config.repos}
         daemon._children = {"alpha": mock_alpha, "beta": mock_beta}
@@ -503,10 +515,13 @@ class TestWatchDaemon:
         """_check_health restarts a child whose poll() returns non-None."""
         daemon = daemon_env["daemon"]
         config = daemon_env["config"]
+        daemon._state_path = daemon_env["tmp_path"] / "daemon-state.json"
 
         mock_alpha = MagicMock()
+        mock_alpha.pid = 100
         mock_alpha.poll.return_value = 1  # dead
         mock_beta = MagicMock()
+        mock_beta.pid = 200
         mock_beta.poll.return_value = None  # alive
 
         daemon._current_repos = {r.alias: r for r in config.repos}
@@ -543,6 +558,90 @@ class TestWatchDaemon:
         mock_beta.terminate.assert_called_once()
         assert len(daemon._children) == 0
         assert len(daemon._current_repos) == 0
+
+    @patch("code_review_graph.daemon.subprocess.Popen")
+    @patch("code_review_graph.registry.Registry")
+    def test_start_persists_state(self, mock_registry_cls, mock_popen, daemon_env):
+        """start() writes child PIDs to the state file on disk."""
+        mock_proc_a = MagicMock()
+        mock_proc_a.pid = 1001
+        mock_proc_a.poll.return_value = None
+        mock_proc_b = MagicMock()
+        mock_proc_b.pid = 1002
+        mock_proc_b.poll.return_value = None
+        mock_popen.side_effect = [mock_proc_a, mock_proc_b]
+
+        daemon = daemon_env["daemon"]
+        state_path = daemon_env["tmp_path"] / "daemon-state.json"
+        daemon._state_path = state_path
+
+        daemon.start()
+        try:
+            state = load_state(state_path)
+            assert state["alpha"]["pid"] == 1001
+            assert state["beta"]["pid"] == 1002
+        finally:
+            daemon.stop()
+
+    def test_health_check_updates_state(self, daemon_env):
+        """_check_health persists updated PIDs after restarting a dead child."""
+        daemon = daemon_env["daemon"]
+        config = daemon_env["config"]
+        state_path = daemon_env["tmp_path"] / "daemon-state.json"
+        daemon._state_path = state_path
+
+        mock_alpha = MagicMock()
+        mock_alpha.pid = 2001
+        mock_alpha.poll.return_value = 1  # dead
+        mock_beta = MagicMock()
+        mock_beta.pid = 2002
+        mock_beta.poll.return_value = None  # alive
+
+        daemon._current_repos = {r.alias: r for r in config.repos}
+        daemon._children = {"alpha": mock_alpha, "beta": mock_beta}
+
+        with patch("code_review_graph.daemon.subprocess.Popen") as mock_popen:
+            mock_new = MagicMock()
+            mock_new.pid = 3001
+            mock_popen.return_value = mock_new
+
+            daemon._check_health()
+
+            state = load_state(state_path)
+            assert state["alpha"]["pid"] == 3001
+            assert state["beta"]["pid"] == 2002
+
+    def test_status_from_state_reports_alive(self, daemon_env, tmp_path):
+        """A fresh WatchDaemon can report status from persisted state file."""
+        config = daemon_env["config"]
+        state_path = tmp_path / "daemon-state.json"
+
+        import json
+        import os
+
+        # Simulate a running daemon that persisted state with our own PID
+        # (so os.kill(pid, 0) will succeed)
+        our_pid = os.getpid()
+        state = {
+            "alpha": {"pid": our_pid, "path": config.repos[0].path},
+            "beta": {"pid": our_pid, "path": config.repos[1].path},
+        }
+        state_path.write_text(json.dumps(state), encoding="utf-8")
+
+        # Create a *fresh* WatchDaemon (like _handle_status does) with
+        # the state path pointing to our persisted file
+        fresh_daemon = WatchDaemon(config=config, config_path=daemon_env["config_file"])
+        fresh_daemon._state_path = state_path
+
+        result = fresh_daemon.status()
+        repo_map = {r["alias"]: r for r in result["repos"]}
+
+        # Bug: without the fix, both would show alive=False because
+        # _children is empty on the fresh daemon instance
+        assert repo_map["alpha"]["alive"] is True
+        assert repo_map["beta"]["alive"] is True
+        assert repo_map["alpha"]["pid"] == our_pid
+        assert repo_map["beta"]["pid"] == our_pid
 
 
 # ===========================================================================
@@ -652,6 +751,54 @@ class TestDaemonCLI:
             _handle_status(args)
             printed = " ".join(str(c) for c in mock_print.call_args_list)
             assert "not running" in printed
+
+    def test_handle_status_shows_alive_for_running_watchers(self, tmp_path):
+        """_handle_status reports 'alive' for watchers whose PIDs are running.
+
+        Regression test: previously _handle_status created a fresh WatchDaemon
+        with an empty _children dict, so all repos appeared dead even when
+        watcher processes were running.
+        """
+        import os
+
+        from code_review_graph.daemon_cli import _handle_status
+
+        repo = tmp_path / "my-repo"
+        repo.mkdir()
+        (repo / ".git").mkdir()
+
+        args = MagicMock()
+        our_pid = os.getpid()
+        cfg = DaemonConfig(
+            repos=[WatchRepo(path=str(repo), alias="myrepo")],
+            log_dir=tmp_path / "logs",
+        )
+
+        state = {"myrepo": {"pid": our_pid, "path": str(repo)}}
+
+        with (
+            patch(
+                "code_review_graph.daemon.is_daemon_running",
+                return_value=True,
+            ),
+            patch(
+                "code_review_graph.daemon.load_config",
+                return_value=cfg,
+            ),
+            patch(
+                "code_review_graph.daemon.read_pid",
+                return_value=our_pid,
+            ),
+            patch(
+                "code_review_graph.daemon.load_state",
+                return_value=state,
+            ),
+            patch("builtins.print") as mock_print,
+        ):
+            _handle_status(args)
+            printed = " ".join(str(c) for c in mock_print.call_args_list)
+            assert "alive" in printed
+            assert "dead" not in printed
 
     def test_handle_start_already_running(self):
         """_handle_start exits with error when daemon is already running."""
