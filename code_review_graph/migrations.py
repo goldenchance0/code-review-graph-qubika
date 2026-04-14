@@ -216,6 +216,15 @@ def _migrate_v7(conn: sqlite3.Connection) -> None:
     logger.info("Migration v7: added compound edge indexes")
 
 
+def _migrate_v8(conn: sqlite3.Connection) -> None:
+    """v8: Add composite index on edges for upsert_edge performance."""
+    conn.execute("""
+        CREATE INDEX IF NOT EXISTS idx_edges_composite
+        ON edges(kind, source_qualified, target_qualified, file_path, line)
+    """)
+    logger.info("Migration v8: created composite edge index")
+
+
 # ---------------------------------------------------------------------------
 # Migration registry
 # ---------------------------------------------------------------------------
@@ -227,6 +236,7 @@ MIGRATIONS: dict[int, Callable[[sqlite3.Connection], None]] = {
     5: _migrate_v5,
     6: _migrate_v6,
     7: _migrate_v7,
+    8: _migrate_v8,
 }
 
 LATEST_VERSION = max(MIGRATIONS.keys())
