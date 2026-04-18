@@ -35,6 +35,9 @@ def rebuild_fts_index(store: GraphStore) -> int:
     # the FTS5 virtual table DDL, which is tightly coupled to SQLite internals.
     conn = store._conn
 
+    # Wrap the full DROP + CREATE + INSERT sequence in an explicit transaction
+    # so a crash mid-rebuild cannot leave the DB without an FTS table at all
+    # (DROP succeeded but CREATE/INSERT didn't).  See #259.
     if conn.in_transaction:
         logger.warning("Rolling back uncommitted transaction before BEGIN IMMEDIATE")
         conn.rollback()
@@ -52,6 +55,7 @@ def rebuild_fts_index(store: GraphStore) -> int:
 
         # Rebuild from the content table (nodes) using the FTS5 rebuild command
         conn.execute("INSERT INTO nodes_fts(nodes_fts) VALUES('rebuild')")
+
 
         conn.commit()
     except BaseException:
@@ -174,6 +178,7 @@ def _embedding_search(
     query: str,
     limit: int = 50,
     model: str | None = None,
+    provider: str | None = None,
 ) -> list[tuple[int, float]]:
     """Run a vector similarity search using the embedding store.
 
@@ -186,7 +191,7 @@ def _embedding_search(
         return []
 
     try:
-        emb_store = EmbeddingStore(store.db_path, model=model)
+        emb_store = EmbeddingStore(store.db_path, provider=provider, model=model)
         try:
             if not emb_store.available or emb_store.count() == 0:
                 return []
@@ -271,6 +276,7 @@ def hybrid_search(
     limit: int = 20,
     context_files: Optional[list[str]] = None,
     model: Optional[str] = None,
+    provider: Optional[str] = None,
 ) -> list[dict[str, Any]]:
     """Hybrid search combining FTS5 BM25 and vector embeddings via RRF.
 
@@ -308,7 +314,9 @@ def hybrid_search(
         logger.warning("FTS5 unavailable, will use fallback: %s", e)
 
     # Try embedding search
-    emb_results = _embedding_search(store, query, limit=fetch_limit, model=model)
+    emb_results = _embedding_search(
+        store, query, limit=fetch_limit, model=model, provider=provider,
+    )
 
     # ------ Phase 2: Merge via RRF or fallback ------
     if fts_results or emb_results:
