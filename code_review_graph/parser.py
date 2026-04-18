@@ -333,7 +333,12 @@ _CALL_TYPES: dict[str, list[str]] = {
     ],
     "kotlin": ["call_expression"],
     "swift": ["call_expression"],
-    "php": ["function_call_expression", "member_call_expression"],
+    "php": [
+        "function_call_expression",
+        "member_call_expression",
+        "scoped_call_expression",
+        "nullsafe_member_call_expression",
+    ],
     "scala": ["call_expression", "instance_expression", "generic_function"],
     "solidity": ["call_expression"],
     "lua": ["function_call"],
@@ -5149,6 +5154,38 @@ class CodeParser:
         # Julia broadcast call: ``sin.(x)`` — same structure as
         # call_expression (first child is identifier or field_expression)
         # so the generic paths below handle it.
+        if language == "php":
+            def _normalize_php_name(text: str) -> str:
+                # PHP global/function names can be prefixed with '\\'.
+                return text.lstrip("\\")
+
+            if node.type == "function_call_expression":
+                for child in node.children:
+                    if child.type in ("name", "qualified_name"):
+                        raw = child.text.decode("utf-8", errors="replace")
+                        return _normalize_php_name(raw)
+                return None
+
+            if node.type in (
+                "member_call_expression",
+                "nullsafe_member_call_expression",
+            ):
+                for child in reversed(node.children):
+                    if child.type == "name":
+                        return child.text.decode("utf-8", errors="replace")
+                return None
+
+            if node.type == "scoped_call_expression":
+                parts = []
+                for child in node.children:
+                    if child.type in ("name", "qualified_name"):
+                        raw = child.text.decode("utf-8", errors="replace")
+                        parts.append(_normalize_php_name(raw))
+                if len(parts) >= 2:
+                    return f"{parts[0]}::{parts[-1]}"
+                if parts:
+                    return parts[0]
+                return None
 
         # Scala: instance_expression (new Foo(...)) – extract the type name
         if node.type == "instance_expression":
