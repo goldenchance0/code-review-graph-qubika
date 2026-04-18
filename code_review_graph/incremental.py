@@ -24,6 +24,18 @@ _MAX_PARSE_WORKERS = int(os.environ.get("CRG_PARSE_WORKERS", str(min(os.cpu_coun
 
 logger = logging.getLogger(__name__)
 
+
+def _run_rescript_resolver(store: GraphStore) -> Optional[dict]:
+    """Run the ReScript cross-module resolver, swallowing any failure so
+    build never fails because of it. Returns stats or None on error.
+    """
+    try:
+        from .rescript_resolver import resolve_rescript_cross_module
+        return resolve_rescript_cross_module(store)
+    except Exception as exc:  # noqa: BLE001 - best-effort post-pass
+        logger.warning("ReScript cross-module resolver failed: %s", exc)
+        return None
+
 # Default ignore patterns (in addition to .gitignore).
 #
 # `<dir>/**` patterns are matched at any depth by _should_ignore, so
@@ -633,11 +645,14 @@ def full_build(
         store.set_metadata("git_head_sha", sha)
     store.commit()
 
+    rescript_stats = _run_rescript_resolver(store)
+
     return {
         "files_parsed": len(files),
         "total_nodes": total_nodes,
         "total_edges": total_edges,
         "errors": errors,
+        "rescript_resolution": rescript_stats,
     }
 
 
@@ -761,6 +776,15 @@ def incremental_update(
         store.set_metadata("git_head_sha", sha)
     store.commit()
 
+    # Only re-run ReScript resolver when changed files touched .res/.resi;
+    # otherwise prior resolution state is unaffected.
+    rescript_changed = any(
+        rp.endswith((".res", ".resi")) for rp in all_files
+    )
+    rescript_stats = (
+        _run_rescript_resolver(store) if rescript_changed else None
+    )
+
     return {
         "files_updated": len(all_files),
         "total_nodes": total_nodes,
@@ -768,6 +792,7 @@ def incremental_update(
         "changed_files": list(changed_files),
         "dependent_files": list(dependent_files),
         "errors": errors,
+        "rescript_resolution": rescript_stats,
     }
 
 
