@@ -326,7 +326,11 @@ class OpenAIEmbeddingProvider(EmbeddingProvider):
         path = (parsed.path or "").rstrip("/")
         if path.endswith("/embeddings"):
             path = path[: -len("/embeddings")].rstrip("/")
-        return f"{host_part}{path}" if path else host_part
+        # Include scheme: http and https to the same host+path front
+        # different endpoints in practice (plaintext vs TLS, dev vs prod
+        # gateway), and sharing cached vectors across them is the same
+        # silent-mixing failure mode as switching base URL entirely.
+        return f"{scheme}://{host_part}{path}" if path else f"{scheme}://{host_part}"
 
     def _call_api(self, texts: list[str]) -> list[list[float]]:
         import http.client
@@ -404,39 +408,42 @@ class OpenAIEmbeddingProvider(EmbeddingProvider):
                     raise RuntimeError("OpenAI API returned empty data")
                 # OpenAI spec: data[i].index maps to input[i], but some
                 # compatible gateways re-order results or drop entries on
-                # partial failure. We require the returned indices to be a
-                # permutation of 0..len(texts)-1 before trusting alignment;
-                # length-only checks would let duplicates or holes through.
-                expected = set(range(len(texts)))
-                seen: set[int] = set()
-                all_indexed = True
-                for item in data:
-                    idx = item.get("index")
-                    if not isinstance(idx, int):
-                        all_indexed = False
-                        break
-                    if idx in seen or idx not in expected:
+                # partial failure, and others omit `index` entirely. Three
+                # disjoint cases:
+                #   1. All items have a valid int ``index``: must form a
+                #      permutation of 0..N-1, then sort and use.
+                #   2. NO item carries an ``index`` field: trust server
+                #      order, only verify count matches.
+                #   3. Anything in between (partial indices, str indices,
+                #      missing on some): refuse. Zipping server order in
+                #      that case would happily misalign the indexed items.
+                any_has_index = any("index" in item for item in data)
+                all_int_index = all(
+                    isinstance(item.get("index"), int) for item in data
+                )
+                if all_int_index:
+                    expected = set(range(len(texts)))
+                    indices = [int(item["index"]) for item in data]
+                    if len(set(indices)) != len(indices) or set(indices) != expected:
                         raise RuntimeError(
                             "OpenAI API returned malformed indices "
-                            f"(duplicate or out-of-range: {idx}) — "
-                            "refusing to misalign vectors."
-                        )
-                    seen.add(idx)
-                if all_indexed:
-                    if seen != expected:
-                        raise RuntimeError(
-                            f"OpenAI API returned {len(seen)} of "
-                            f"{len(texts)} expected indices — "
-                            "refusing to misalign vectors."
+                            f"(got {indices}, expected permutation of "
+                            f"0..{len(texts) - 1}) — refusing to misalign vectors."
                         )
                     data = sorted(data, key=lambda item: int(item["index"]))
-                elif len(data) != len(texts):
-                    # Gateway omitted ``index`` entirely (allowed by some
-                    # compatible backends). The only safety net left is
-                    # trusting server order and verifying the count.
+                elif not any_has_index:
+                    if len(data) != len(texts):
+                        raise RuntimeError(
+                            f"OpenAI API returned {len(data)} embeddings for "
+                            f"{len(texts)} inputs with no index field — "
+                            "refusing to misalign vectors."
+                        )
+                else:
+                    # Mixed: some items have index, others don't (or carry
+                    # non-int index). Server order would silently misplace
+                    # the indexed items, so we refuse.
                     raise RuntimeError(
-                        f"OpenAI API returned {len(data)} embeddings for "
-                        f"{len(texts)} inputs with no usable index field — "
+                        "OpenAI API returned mixed indexed/unindexed data — "
                         "refusing to misalign vectors."
                     )
 
