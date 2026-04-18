@@ -272,6 +272,10 @@ class OpenAIEmbeddingProvider(EmbeddingProvider):
 
     _DEFAULT_BATCH_SIZE = 100
 
+    # Default ports by scheme; stripped from the host_key so the user can't
+    # accidentally force a re-embed by toggling an explicit default port.
+    _DEFAULT_PORTS = {"http": 80, "https": 443}
+
     def __init__(
         self,
         api_key: str,
@@ -287,13 +291,45 @@ class OpenAIEmbeddingProvider(EmbeddingProvider):
         self._dimension = dimension
         self._timeout = timeout
         self._batch_size = batch_size or self._DEFAULT_BATCH_SIZE
-        # Normalize the host component for use in provider.name. urlparse
-        # returns netloc as "host[:port]" which is exactly what we want —
-        # distinct endpoints get distinct identities, but `/v1` vs `/v1/`
-        # path variations don't force spurious re-embeds.
-        self._host_key = (urlparse(self._base_url).netloc or self._base_url).lower()
+        self._host_key = self._make_host_key(self._base_url)
+
+    @classmethod
+    def _make_host_key(cls, base_url: str) -> str:
+        """Normalize the identity key used in ``provider.name``.
+
+        Codex review pushed this well past naive ``netloc`` because that
+        alone has three leaks:
+
+        1. ``netloc`` preserves ``userinfo`` (``user:pass@host``) — we'd
+           persist credentials into the DB's ``embeddings.provider`` column.
+           Use ``hostname`` instead.
+        2. Default ports (``:80`` for http, ``:443`` for https) are
+           semantically identical to omitting the port; keeping them would
+           cause spurious re-embeds when the user just spelled the URL
+           differently.
+        3. Path is part of the backend identity for path-routed gateways:
+           ``https://gw/openai/v1`` and ``https://gw/vendor-b/v1`` front
+           different models and must not share cached vectors.
+        """
+        parsed = urlparse(base_url)
+        hostname = (parsed.hostname or "").lower()
+        scheme = (parsed.scheme or "").lower()
+        port = parsed.port
+        if port and port != cls._DEFAULT_PORTS.get(scheme):
+            # Bracket IPv6 literals when appending a port.
+            host_part = f"[{hostname}]:{port}" if ":" in hostname else f"{hostname}:{port}"
+        else:
+            host_part = hostname
+        # Preserve path routing. Trim any trailing slash and any
+        # ``/embeddings`` suffix that callers may have included — we append
+        # that ourselves when building the request URL.
+        path = (parsed.path or "").rstrip("/")
+        if path.endswith("/embeddings"):
+            path = path[: -len("/embeddings")].rstrip("/")
+        return f"{host_part}{path}" if path else host_part
 
     def _call_api(self, texts: list[str]) -> list[list[float]]:
+        import http.client
         import json as _json
         import socket
         import ssl
@@ -368,18 +404,41 @@ class OpenAIEmbeddingProvider(EmbeddingProvider):
                     raise RuntimeError("OpenAI API returned empty data")
                 # OpenAI spec: data[i].index maps to input[i], but some
                 # compatible gateways re-order results or drop entries on
-                # partial failure. Reorder by index and verify the length
-                # so we never zip misaligned vectors onto the wrong nodes.
-                if len(data) != len(texts):
+                # partial failure. We require the returned indices to be a
+                # permutation of 0..len(texts)-1 before trusting alignment;
+                # length-only checks would let duplicates or holes through.
+                expected = set(range(len(texts)))
+                seen: set[int] = set()
+                all_indexed = True
+                for item in data:
+                    idx = item.get("index")
+                    if not isinstance(idx, int):
+                        all_indexed = False
+                        break
+                    if idx in seen or idx not in expected:
+                        raise RuntimeError(
+                            "OpenAI API returned malformed indices "
+                            f"(duplicate or out-of-range: {idx}) — "
+                            "refusing to misalign vectors."
+                        )
+                    seen.add(idx)
+                if all_indexed:
+                    if seen != expected:
+                        raise RuntimeError(
+                            f"OpenAI API returned {len(seen)} of "
+                            f"{len(texts)} expected indices — "
+                            "refusing to misalign vectors."
+                        )
+                    data = sorted(data, key=lambda item: int(item["index"]))
+                elif len(data) != len(texts):
+                    # Gateway omitted ``index`` entirely (allowed by some
+                    # compatible backends). The only safety net left is
+                    # trusting server order and verifying the count.
                     raise RuntimeError(
                         f"OpenAI API returned {len(data)} embeddings for "
-                        f"{len(texts)} inputs — refusing to misalign vectors."
+                        f"{len(texts)} inputs with no usable index field — "
+                        "refusing to misalign vectors."
                     )
-                try:
-                    data = sorted(data, key=lambda item: int(item.get("index", 0)))
-                except (TypeError, ValueError):
-                    # Some gateways omit index entirely; preserve server order.
-                    pass
 
                 vectors = [item["embedding"] for item in data]
                 if vectors and self._dimension is None:
@@ -394,8 +453,20 @@ class OpenAIEmbeddingProvider(EmbeddingProvider):
                 is_retryable = False
                 if isinstance(e, urllib.error.HTTPError):
                     is_retryable = e.code == 429 or 500 <= e.code < 600
-                elif isinstance(e, (urllib.error.URLError, socket.timeout,
-                                    TimeoutError, ConnectionError, ssl.SSLError)):
+                elif isinstance(e, (
+                    urllib.error.URLError,
+                    socket.timeout,
+                    TimeoutError,
+                    ConnectionError,
+                    ssl.SSLError,
+                    # Reverse proxies and edge gateways surface transient
+                    # disconnects as these stdlib classes. Real incidents
+                    # have been observed on Cloudflare-fronted endpoints
+                    # and on LiteLLM when upstream providers hiccup.
+                    http.client.IncompleteRead,
+                    http.client.BadStatusLine,
+                    http.client.RemoteDisconnected,
+                )):
                     is_retryable = True
                 if not is_retryable or attempt == max_retries - 1:
                     raise

@@ -422,7 +422,7 @@ class TestOpenAIEmbeddingProvider:
         p = OpenAIEmbeddingProvider(
             api_key="k", base_url="http://localhost:3000/v1", model="text-embedding-3-small",
         )
-        assert p.name == "openai:text-embedding-3-small@localhost:3000"
+        assert p.name == "openai:text-embedding-3-small@localhost:3000/v1"
 
     def test_default_dimension_before_call(self):
         p = OpenAIEmbeddingProvider(
@@ -588,9 +588,9 @@ class TestOpenAIEmbeddingProvider:
             model="text-embedding-3-small",
         )
         assert p1.name != p2.name != p3.name
-        assert p1.name == "openai:text-embedding-3-small@api.openai.com"
-        assert p2.name == "openai:text-embedding-3-small@openrouter.ai"
-        assert p3.name == "openai:text-embedding-3-small@127.0.0.1:3000"
+        assert p1.name == "openai:text-embedding-3-small@api.openai.com/v1"
+        assert p2.name == "openai:text-embedding-3-small@openrouter.ai/api/v1"
+        assert p3.name == "openai:text-embedding-3-small@127.0.0.1:3000/v1"
 
     def test_trailing_slash_does_not_change_identity(self):
         """A trailing slash on base_url must not cause a re-embed."""
@@ -601,6 +601,152 @@ class TestOpenAIEmbeddingProvider:
             api_key="k", base_url="http://localhost:3000/v1/", model="m",
         )
         assert p1.name == p2.name
+
+    def test_path_routed_gateways_get_distinct_identity(self):
+        """Path-routed gateways (same host, different URL path) front
+        different backends and must NOT share cached vectors.
+        (Codex round-2 HIGH finding.)"""
+        p1 = OpenAIEmbeddingProvider(
+            api_key="k", base_url="https://gw.example.com/openai/v1", model="m",
+        )
+        p2 = OpenAIEmbeddingProvider(
+            api_key="k", base_url="https://gw.example.com/vendor-b/v1", model="m",
+        )
+        assert p1.name != p2.name
+        assert p1.name == "openai:m@gw.example.com/openai/v1"
+        assert p2.name == "openai:m@gw.example.com/vendor-b/v1"
+
+    def test_default_port_is_stripped_from_identity(self):
+        """`https://host/v1` and `https://host:443/v1` must map to the
+        same identity; stripping is necessary so the user can't force
+        a pointless re-embed by spelling the port differently.
+        (Codex round-2 MED finding.)"""
+        p1 = OpenAIEmbeddingProvider(
+            api_key="k", base_url="https://api.openai.com/v1", model="m",
+        )
+        p2 = OpenAIEmbeddingProvider(
+            api_key="k", base_url="https://api.openai.com:443/v1", model="m",
+        )
+        p3 = OpenAIEmbeddingProvider(
+            api_key="k", base_url="http://example.com:80/v1", model="m",
+        )
+        p4 = OpenAIEmbeddingProvider(
+            api_key="k", base_url="http://example.com/v1", model="m",
+        )
+        assert p1.name == p2.name
+        assert p3.name == p4.name
+        # Non-default port still affects identity (normal case).
+        p5 = OpenAIEmbeddingProvider(
+            api_key="k", base_url="https://api.openai.com:8443/v1", model="m",
+        )
+        assert p5.name != p1.name
+
+    def test_userinfo_is_stripped_from_identity(self):
+        """Credentials embedded in the URL must NOT appear in provider.name
+        (which gets persisted into the embeddings table). This is an
+        at-rest credential-leak defense. (Codex round-2 MED finding.)"""
+        p_plain = OpenAIEmbeddingProvider(
+            api_key="k", base_url="https://api.example.com/v1", model="m",
+        )
+        p_auth = OpenAIEmbeddingProvider(
+            api_key="k", base_url="https://user:secret@api.example.com/v1", model="m",
+        )
+        # 1. Same identity — userinfo stripped.
+        assert p_plain.name == p_auth.name
+        # 2. The secret never appears in the identity string.
+        assert "secret" not in p_auth.name
+        assert "user" not in p_auth.name
+
+    def test_ipv6_literal_in_identity(self):
+        """IPv6 hostnames must round-trip cleanly, with brackets restored
+        when a non-default port is attached."""
+        p = OpenAIEmbeddingProvider(
+            api_key="k", base_url="http://[::1]:3000/v1", model="m",
+        )
+        assert p.name == "openai:m@[::1]:3000/v1"
+
+    def test_response_with_missing_index_raises(self):
+        """Length-only checks let duplicate/missing indices through. We
+        require a strict 0..N-1 permutation. (Codex round-2 MED finding.)"""
+        p = OpenAIEmbeddingProvider(
+            api_key="k", base_url="http://localhost:3000/v1", model="m",
+        )
+        bad = json.dumps({
+            "data": [
+                {"embedding": [1.0], "index": 0},
+                {"embedding": [2.0], "index": 0},  # duplicate 0, missing 1
+            ],
+        }).encode("utf-8")
+        mock = MagicMock()
+        mock.read.return_value = bad
+        mock.__enter__ = MagicMock(return_value=mock)
+        mock.__exit__ = MagicMock(return_value=False)
+        with patch("urllib.request.urlopen", return_value=mock):
+            with pytest.raises(RuntimeError, match="duplicate or out-of-range"):
+                p.embed(["a", "b"])
+
+    def test_response_with_out_of_range_index_raises(self):
+        """Index >= N is invalid even if count matches."""
+        p = OpenAIEmbeddingProvider(
+            api_key="k", base_url="http://localhost:3000/v1", model="m",
+        )
+        bad = json.dumps({
+            "data": [
+                {"embedding": [1.0], "index": 0},
+                {"embedding": [2.0], "index": 5},  # out-of-range
+            ],
+        }).encode("utf-8")
+        mock = MagicMock()
+        mock.read.return_value = bad
+        mock.__enter__ = MagicMock(return_value=mock)
+        mock.__exit__ = MagicMock(return_value=False)
+        with patch("urllib.request.urlopen", return_value=mock):
+            with pytest.raises(RuntimeError, match="duplicate or out-of-range"):
+                p.embed(["a", "b"])
+
+    def test_response_without_index_field_falls_back_to_server_order(self):
+        """Some OpenAI-compatible gateways omit `index` entirely. The
+        length check is the only safety net available — we must still
+        succeed on length match and fail on mismatch."""
+        p = OpenAIEmbeddingProvider(
+            api_key="k", base_url="http://localhost:3000/v1", model="m",
+        )
+        no_idx = json.dumps({
+            "data": [
+                {"embedding": [1.0]},
+                {"embedding": [2.0]},
+            ],
+        }).encode("utf-8")
+        mock = MagicMock()
+        mock.read.return_value = no_idx
+        mock.__enter__ = MagicMock(return_value=mock)
+        mock.__exit__ = MagicMock(return_value=False)
+        with patch("urllib.request.urlopen", return_value=mock):
+            result = p.embed(["a", "b"])
+        # Trust server order when index is absent.
+        assert result == [[1.0], [2.0]]
+
+    def test_retry_on_remote_disconnected(self, monkeypatch):
+        """http.client.RemoteDisconnected is a common transient failure
+        when reverse proxies drop idle connections. Must retry.
+        (Codex round-2 LOW finding.)"""
+        import http.client
+        monkeypatch.setattr(time, "sleep", lambda s: None)
+
+        p = OpenAIEmbeddingProvider(
+            api_key="k", base_url="http://localhost:3000/v1", model="m",
+        )
+        call_count = {"n": 0}
+
+        def _mock_urlopen(*args, **kwargs):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                raise http.client.RemoteDisconnected("edge proxy dropped connection")
+            return _make_openai_response([[0.1] * 5])
+
+        with patch("urllib.request.urlopen", side_effect=_mock_urlopen):
+            p.embed_query("x")
+        assert call_count["n"] == 2
 
     def test_response_length_mismatch_raises(self):
         """Gateway returns fewer embeddings than inputs: refuse to proceed
@@ -770,7 +916,7 @@ class TestGetProviderOpenAI:
         with patch.dict("os.environ", self._MIN_ENV, clear=True):
             p = get_provider("openai")
         assert isinstance(p, OpenAIEmbeddingProvider)
-        assert p.name == "openai:text-embedding-3-small@127.0.0.1:3000"
+        assert p.name == "openai:text-embedding-3-small@127.0.0.1:3000/v1"
 
     def test_missing_api_key_raises(self):
         env = {k: v for k, v in self._MIN_ENV.items() if k != "CRG_OPENAI_API_KEY"}
@@ -793,7 +939,7 @@ class TestGetProviderOpenAI:
     def test_model_arg_overrides_env(self):
         with patch.dict("os.environ", self._MIN_ENV, clear=True):
             p = get_provider("openai", model="text-embedding-3-large")
-        assert p.name == "openai:text-embedding-3-large@127.0.0.1:3000"
+        assert p.name == "openai:text-embedding-3-large@127.0.0.1:3000/v1"
 
     def test_dimension_env_forwarded(self):
         env = {**self._MIN_ENV, "CRG_OPENAI_DIMENSION": "256"}
