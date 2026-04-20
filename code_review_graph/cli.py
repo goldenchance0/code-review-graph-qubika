@@ -217,9 +217,11 @@ def _handle_init(args: argparse.Namespace) -> None:
     # Legacy: --skills/--hooks/--all still accepted (no-op, everything is default)
 
     from .skills import (
+        PLATFORMS,
         generate_skills,
         inject_claude_md,
         inject_platform_instructions,
+        install_cursor_hooks,
         install_git_hook,
         install_hooks,
         install_qoder_skills,
@@ -263,6 +265,14 @@ def _handle_init(args: argparse.Namespace) -> None:
         git_hook = install_git_hook(repo_root)
         if git_hook:
             print(f"Installed git pre-commit hook in {git_hook}")
+
+        # Cursor hooks (user-level, only if ~/.cursor exists — matching MCP detect)
+        if target in ("all", "cursor") and PLATFORMS["cursor"]["detect"]():
+            try:
+                hooks_path = install_cursor_hooks()
+                print(f"Installed Cursor hooks in {hooks_path}")
+            except Exception as exc:
+                logger.warning("Could not install Cursor hooks: %s", exc)
 
     print()
     print("Next steps:")
