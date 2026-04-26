@@ -239,8 +239,12 @@ def _handle_init(args: argparse.Namespace) -> None:
     )
 
     if not skip_skills:
-        skills_dir = generate_skills(repo_root)
-        print(f"Generated skills in {skills_dir}")
+        # Claude Code skills are only relevant for Claude (or full install).
+        if target in ("claude", "all"):
+            skills_dir = generate_skills(repo_root)
+            print(f"Generated Claude Code skills in {skills_dir}")
+
+        # Gemini CLI skills are workspace-scoped under .gemini/.
         if target in ("gemini-cli", "all"):
             gemini_skills_dir = install_gemini_cli_skills(repo_root)
             print(f"Installed Gemini CLI skills in {gemini_skills_dir}")
