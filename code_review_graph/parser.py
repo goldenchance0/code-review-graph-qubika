@@ -125,6 +125,7 @@ EXTENSION_TO_LANGUAGE: dict[str, str] = {
     ".res": "rescript",
     ".resi": "rescript",
     ".gd": "gdscript",
+    ".nix": "nix",
 }
 
 # Tree-sitter node type mappings per language
@@ -169,6 +170,9 @@ _CLASS_TYPES: dict[str, list[str]] = {
     # identifier is literally "defmodule". Dispatched via
     # _extract_elixir_constructs to avoid matching every ``call`` here.
     "elixir": [],
+    # Nix: attrset bindings aren't "classes"; dispatched via
+    # _extract_nix_constructs.
+    "nix": [],
     "zig": ["container_declaration"],
     "powershell": ["class_statement"],
     "julia": ["struct_definition", "abstract_definition"],
@@ -216,6 +220,9 @@ _FUNCTION_TYPES: dict[str, list[str]] = {
     # Elixir: def/defp/defmacro are all ``call`` nodes whose first
     # identifier matches. Dispatched via _extract_elixir_constructs.
     "elixir": [],
+    # Nix: `attrpath = expr;` bindings become Function nodes —
+    # handled in _extract_nix_constructs.
+    "nix": [],
     "zig": ["fn_proto", "fn_decl"],
     "powershell": ["function_statement"],
     "julia": [
@@ -256,6 +263,10 @@ _IMPORT_TYPES: dict[str, list[str]] = {
     # Elixir: alias/import/require/use are all ``call`` nodes —
     # handled in _extract_elixir_constructs.
     "elixir": [],
+    # Nix: `import ./x.nix`, `callPackage ./y.nix {}`, and flake
+    # `inputs.*.url` strings become IMPORTS_FROM edges —
+    # handled in _extract_nix_constructs.
+    "nix": [],
     # Zig: @import("...") is a builtin_call_expr — handled
     # generically via call types below.
     "zig": [],
@@ -297,6 +308,9 @@ _CALL_TYPES: dict[str, list[str]] = {
     # _extract_elixir_constructs which filters out def/defmodule/alias/etc.
     # before treating what's left as a real call.
     "elixir": [],
+    # Nix: function application is ubiquitous; only import/callPackage
+    # produce edges, in _extract_nix_constructs.
+    "nix": [],
     "zig": ["call_expression", "builtin_call_expr"],
     "powershell": ["command_expression"],
     "julia": ["call_expression"],
