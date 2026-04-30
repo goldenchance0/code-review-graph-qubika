@@ -2173,6 +2173,56 @@ class CodeParser:
                 parts.append(child.text.decode("utf-8", errors="replace"))
         return parts
 
+    def _extract_nix_flake_input_urls(
+        self, attrset_node,
+    ) -> list[tuple[str, int]]:
+        """Walk a Nix ``attrset_expression`` looking for ``*.url = "..."``
+        bindings whose RHS is a literal string. Returns ``(url, line)``
+        tuples. Used when the enclosing attrpath is ``inputs`` so that both
+        the nested form
+
+            inputs = { nixpkgs.url = "..."; flake-utils.url = "..."; };
+
+        and the mixed form (an inner input with its own nested attrset)
+        surface the URL strings as IMPORTS_FROM targets.
+        """
+        results: list[tuple[str, int]] = []
+
+        def visit(n) -> None:
+            if n is None:
+                return
+            if n.type == "binding":
+                inner_path = None
+                inner_rhs = None
+                for sub in n.children:
+                    if sub.type == "attrpath":
+                        inner_path = sub
+                    elif sub.type not in ("=", ";") and inner_path is not None:
+                        if inner_rhs is None:
+                            inner_rhs = sub
+                if inner_path is not None and inner_rhs is not None:
+                    parts = self._nix_attrpath_parts(inner_path)
+                    if (
+                        parts
+                        and parts[-1] == "url"
+                        and inner_rhs.type == "string_expression"
+                    ):
+                        for c in inner_rhs.children:
+                            if c.type == "string_fragment":
+                                url = c.text.decode("utf-8", errors="replace")
+                                results.append((url, n.start_point[0] + 1))
+                                break
+                        return  # leaf binding — no children to recurse into
+                    # Non-url binding: still recurse so a deeper url survives
+                    if inner_rhs.type == "attrset_expression":
+                        visit(inner_rhs)
+                        return
+            for c in n.children:
+                visit(c)
+
+        visit(attrset_node)
+        return results
+
     def _extract_nix_import_targets(self, rhs_node) -> list[tuple[str, int]]:
         """Walk an expression looking for ``import <path>`` and
         ``callPackage <path> <args>`` applications. Returns a list of
@@ -2302,6 +2352,8 @@ class CodeParser:
         line = node.start_point[0] + 1
 
         # --- Flake input URL: inputs.<name>.url = "..." ------------------
+        # Flat form: ``inputs.nixpkgs.url = "github:...";`` — emit one edge,
+        # skip node creation (this is metadata, not a graph "thing").
         if (
             self._is_nix_flake_file(file_path)
             and len(parts) >= 2
@@ -2323,6 +2375,25 @@ class CodeParser:
                     line=line,
                 ))
                 return True
+
+        # Nested form: ``inputs = { nixpkgs.url = "..."; ... };`` — emit an
+        # edge per inner url string. Still fall through so the ``inputs``
+        # binding itself becomes a Function node and the default recursion
+        # continues (the recursion won't re-emit these urls as separate
+        # Function nodes because the flat form above short-circuits).
+        if (
+            self._is_nix_flake_file(file_path)
+            and parts == ["inputs"]
+            and rhs_node.type == "attrset_expression"
+        ):
+            for url, uline in self._extract_nix_flake_input_urls(rhs_node):
+                edges.append(EdgeInfo(
+                    kind="IMPORTS_FROM",
+                    source=file_path,
+                    target=url,
+                    file_path=file_path,
+                    line=uline,
+                ))
 
         # --- Regular binding → Function node -----------------------------
         qualified = self._qualify(name, file_path, enclosing_class)
