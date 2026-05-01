@@ -356,6 +356,16 @@ _LOMBOK_CONSTRUCTOR_ANNOTATIONS = frozenset({
     "RequiredArgsConstructor", "AllArgsConstructor",
 })
 
+# Temporal workflow/activity interface markers
+_TEMPORAL_INTERFACE_ANNOTATIONS = frozenset({
+    "WorkflowInterface", "ActivityInterface",
+})
+
+# Temporal method-level markers
+_TEMPORAL_METHOD_ANNOTATIONS = frozenset({
+    "WorkflowMethod", "ActivityMethod", "SignalMethod", "QueryMethod",
+})
+
 
 # ---------------------------------------------------------------------------
 # ReScript regex patterns and helpers (no tree-sitter grammar bundled)
@@ -2901,6 +2911,63 @@ class CodeParser:
                         extra=extra,
                     ))
 
+    def _emit_temporal_stub_fields(
+        self,
+        class_node,
+        class_name: str,
+        file_path: str,
+        edges: list[EdgeInfo],
+    ) -> None:
+        """Emit TEMPORAL_STUB edges for Temporal activity/workflow stub fields.
+
+        Detects fields whose type name ends with 'Activity' or 'Workflow' —
+        the universal naming convention for Temporal interfaces. The temporal
+        resolver validates these against nodes that have temporal_role in extra.
+        Static fields are skipped (e.g. logger, constants).
+        """
+        qualified_source = self._qualify(class_name, file_path, None)
+
+        for node in class_node.children:
+            if node.type != "class_body":
+                continue
+            for member in node.children:
+                if member.type != "field_declaration":
+                    continue
+                has_static = False
+                field_type: Optional[str] = None
+                field_name: Optional[str] = None
+
+                for ch in member.children:
+                    if ch.type == "modifiers":
+                        for mod in ch.children:
+                            if mod.text and mod.text.decode("utf-8", errors="replace") == "static":
+                                has_static = True
+                    elif ch.type == "type_identifier":
+                        field_type = ch.text.decode("utf-8", errors="replace")
+                    elif ch.type == "variable_declarator":
+                        for sub in ch.children:
+                            if sub.type == "identifier":
+                                field_name = sub.text.decode("utf-8", errors="replace")
+                                break
+
+                if has_static or not field_type or not field_name:
+                    continue
+
+                # Only emit for types following the Temporal naming convention
+                if not (field_type.endswith("Activity") or field_type.endswith("Workflow")):
+                    continue
+
+                edges.append(EdgeInfo(
+                    kind="TEMPORAL_STUB",
+                    source=qualified_source,
+                    target=field_type,
+                    file_path=file_path,
+                    line=member.start_point[0] + 1,
+                    extra={"field_name": field_name, "stub_type": (
+                        "activity" if field_type.endswith("Activity") else "workflow"
+                    )},
+                ))
+
     def _extract_classes(
         self,
         child,
@@ -2949,6 +3016,12 @@ class CodeParser:
                 extra["spring_stereotype"] = spring_stereotypes[0]
             if class_annotations:
                 extra["spring_annotations"] = class_annotations
+            temporal_roles = [
+                a for a in class_annotations if a in _TEMPORAL_INTERFACE_ANNOTATIONS
+            ]
+            if temporal_roles:
+                role = "workflow_interface" if "WorkflowInterface" in temporal_roles else "activity_interface"
+                extra["temporal_role"] = role
 
         node = NodeInfo(
             kind="Class",
@@ -2989,6 +3062,8 @@ class CodeParser:
             self._emit_spring_injections(
                 child, name, class_annotations, language, file_path, edges,
             )
+            # Temporal: emit TEMPORAL_STUB edges for activity/workflow stub fields
+            self._emit_temporal_stub_fields(child, name, file_path, edges)
 
         # Recurse into class body
         self._extract_from_tree(
@@ -3053,6 +3128,15 @@ class CodeParser:
         params = self._get_params(child, language, source)
         ret_type = self._get_return_type(child, language, source)
 
+        # Java: detect Temporal method-level annotations
+        method_extra: dict = {}
+        if language == "java" and deco_list:
+            temporal_method_annots = [
+                a for a in deco_list if a in _TEMPORAL_METHOD_ANNOTATIONS
+            ]
+            if temporal_method_annots:
+                method_extra["temporal_role"] = temporal_method_annots[0].lower()
+
         node = NodeInfo(
             kind=kind,
             name=name,
@@ -3064,6 +3148,7 @@ class CodeParser:
             params=params,
             return_type=ret_type,
             is_test=is_test,
+            extra=method_extra,
         )
         nodes.append(node)
 
@@ -4228,6 +4313,17 @@ class CodeParser:
                     return child.text.decode("utf-8", errors="replace")
                 if child.type == "package" and child.text != b"package":
                     return child.text.decode("utf-8", errors="replace")
+        # Java: method_declaration has return type_identifier before the method
+        # identifier — skip straight to the first plain identifier child to
+        # avoid returning the return type as the function name.
+        if language == "java" and kind == "function" and node.type in (
+            "method_declaration", "constructor_declaration",
+        ):
+            for child in node.children:
+                if child.type == "identifier":
+                    return child.text.decode("utf-8", errors="replace")
+            return None
+
         # For C/C++/Objective-C: function names are inside
         # function_declarator / pointer_declarator. Check these first to
         # avoid matching the return type_identifier as the function name.

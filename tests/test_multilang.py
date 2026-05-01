@@ -2101,3 +2101,138 @@ class TestSpringDIResolver:
             assert "." in target or "::" in target, (
                 f"Resolved target should contain type.method or ::, got: {target!r}"
             )
+
+
+class TestTemporalParsing:
+    """Tests for Temporal @WorkflowInterface / @ActivityInterface detection."""
+
+    def setup_method(self):
+        self.parser = CodeParser()
+        self.nodes, self.edges = self.parser.parse_file(FIXTURES / "TemporalWorkflow.java")
+
+    def test_workflow_interface_gets_temporal_role(self):
+        classes = {n.name: n for n in self.nodes if n.kind == "Class"}
+        assert "OrderWorkflow" in classes
+        assert classes["OrderWorkflow"].extra.get("temporal_role") == "workflow_interface"
+
+    def test_activity_interface_gets_temporal_role(self):
+        classes = {n.name: n for n in self.nodes if n.kind == "Class"}
+        assert "PaymentActivity" in classes
+        assert classes["PaymentActivity"].extra.get("temporal_role") == "activity_interface"
+        assert "ShippingActivity" in classes
+        assert classes["ShippingActivity"].extra.get("temporal_role") == "activity_interface"
+
+    def test_impl_class_has_no_temporal_role(self):
+        classes = {n.name: n for n in self.nodes if n.kind == "Class"}
+        assert "OrderWorkflowImpl" in classes
+        assert "temporal_role" not in classes["OrderWorkflowImpl"].extra
+
+    def test_temporal_stub_edges_emitted_for_activity_fields(self):
+        stubs = [e for e in self.edges if e.kind == "TEMPORAL_STUB"]
+        targets = {e.target for e in stubs}
+        assert "PaymentActivity" in targets
+        assert "ShippingActivity" in targets
+
+    def test_temporal_stub_field_name_stored(self):
+        stubs = [e for e in self.edges if e.kind == "TEMPORAL_STUB"]
+        field_names = {e.extra.get("field_name") for e in stubs}
+        assert "paymentActivity" in field_names
+        assert "shippingActivity" in field_names
+
+    def test_static_field_not_in_temporal_stubs(self):
+        stubs = [e for e in self.edges if e.kind == "TEMPORAL_STUB"]
+        field_names = {e.extra.get("field_name") for e in stubs}
+        assert "TAG" not in field_names
+
+    def test_temporal_stub_source_is_workflow_impl(self):
+        stubs = [e for e in self.edges if e.kind == "TEMPORAL_STUB"]
+        sources = {e.source for e in stubs}
+        assert any("OrderWorkflowImpl" in s for s in sources)
+
+    def test_workflow_method_annotation_stored_on_method(self):
+        interface_methods = [
+            n for n in self.nodes if n.kind == "Function" and n.parent_name == "OrderWorkflow"
+        ]
+        names = {n.name: n for n in interface_methods}
+        assert "processOrder" in names
+        assert names["processOrder"].extra.get("temporal_role") == "workflowmethod"
+
+    def test_signal_method_annotation_stored(self):
+        interface_methods = [
+            n for n in self.nodes if n.kind == "Function" and n.parent_name == "OrderWorkflow"
+        ]
+        names = {n.name: n for n in interface_methods}
+        assert "cancelOrder" in names
+        assert names["cancelOrder"].extra.get("temporal_role") == "signalmethod"
+
+    def test_activity_method_annotation_stored(self):
+        activity_methods = [
+            n for n in self.nodes if n.kind == "Function" and n.parent_name == "PaymentActivity"
+        ]
+        names = {n.name: n for n in activity_methods}
+        assert "chargeCard" in names
+        assert names["chargeCard"].extra.get("temporal_role") == "activitymethod"
+
+
+class TestTemporalResolver:
+    """Integration tests for the Temporal post-build call resolver."""
+
+    def _build(self, tmp_path):
+        pkg = tmp_path / "src/main/java/com/example"
+        pkg.mkdir(parents=True)
+
+        (pkg / "PaymentActivity.java").write_text(
+            "package com.example;\n"
+            "import io.temporal.activity.ActivityInterface;\n"
+            "import io.temporal.activity.ActivityMethod;\n"
+            "@ActivityInterface\n"
+            "public interface PaymentActivity {\n"
+            "    @ActivityMethod\n"
+            "    boolean charge(String orderId);\n"
+            "}\n"
+        )
+        (pkg / "PaymentActivityImpl.java").write_text(
+            "package com.example;\n"
+            "public class PaymentActivityImpl implements PaymentActivity {\n"
+            "    public boolean charge(String orderId) { return true; }\n"
+            "}\n"
+        )
+        (pkg / "OrderWorkflowImpl.java").write_text(
+            "package com.example;\n"
+            "public class OrderWorkflowImpl {\n"
+            "    private PaymentActivity paymentActivity;\n"
+            "    public String process(String id) {\n"
+            "        return paymentActivity.charge(id) ? \"OK\" : \"FAIL\";\n"
+            "    }\n"
+            "}\n"
+        )
+
+        from code_review_graph.graph import GraphStore
+        from code_review_graph.incremental import full_build
+
+        store = GraphStore(str(tmp_path / "graph.db"))
+        result = full_build(tmp_path, store)
+        return store, result
+
+    def test_temporal_resolver_runs_and_reports(self, tmp_path):
+        _, result = self._build(tmp_path)
+        stats = result.get("temporal_resolution")
+        assert stats is not None
+        assert stats["files_indexed"] > 0
+
+    def test_calls_resolved_through_activity_stub(self, tmp_path):
+        _, result = self._build(tmp_path)
+        stats = result.get("temporal_resolution", {})
+        assert stats.get("calls_resolved", 0) >= 1
+
+    def test_resolved_target_is_fully_qualified(self, tmp_path):
+        store, _ = self._build(tmp_path)
+        rows = store._conn.execute(
+            "SELECT target_qualified FROM edges WHERE kind='CALLS' "
+            "AND extra LIKE '%temporal_resolved%'"
+        ).fetchall()
+        assert rows, "Expected at least one temporal-resolved CALLS edge"
+        for (target,) in rows:
+            assert "." in target or "::" in target, (
+                f"Resolved target should be qualified, got: {target!r}"
+            )
