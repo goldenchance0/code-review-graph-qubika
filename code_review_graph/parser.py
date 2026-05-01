@@ -366,6 +366,25 @@ _TEMPORAL_METHOD_ANNOTATIONS = frozenset({
     "WorkflowMethod", "ActivityMethod", "SignalMethod", "QueryMethod",
 })
 
+# Kafka consumer annotations (annotation-based pattern)
+_KAFKA_LISTENER_ANNOTATIONS = frozenset({"KafkaListener", "KafkaHandler"})
+
+# Kafka consumer field types (reactive / imperative)
+_KAFKA_CONSUMER_TYPES = frozenset({
+    "KafkaReceiver",
+    "ReactiveKafkaConsumerTemplate",
+    "MessageListenerContainer",
+    "ConcurrentMessageListenerContainer",
+})
+
+# Kafka producer field types
+_KAFKA_PRODUCER_TYPES = frozenset({
+    "KafkaTemplate",
+    "KafkaOperations",
+    "ReactiveKafkaProducerTemplate",
+    "KafkaSender",
+})
+
 
 # ---------------------------------------------------------------------------
 # ReScript regex patterns and helpers (no tree-sitter grammar bundled)
@@ -2968,6 +2987,165 @@ class CodeParser:
                     )},
                 ))
 
+    @staticmethod
+    def _get_kafka_annotation_topics(annotation_node) -> list[str]:
+        """Extract topic strings from @KafkaListener(topics = "...") or topics = {"a","b"}."""
+        topics: list[str] = []
+        for child in annotation_node.children:
+            if child.type != "annotation_argument_list":
+                continue
+            for pair in child.children:
+                if pair.type != "element_value_pair":
+                    continue
+                key_node = next((c for c in pair.children if c.type == "identifier"), None)
+                if key_node is None:
+                    continue
+                key = key_node.text.decode("utf-8", errors="replace")
+                if key not in ("topics", "topicPattern", "value"):
+                    continue
+                # value can be string_literal or element_value_array_initializer
+                for val in pair.children:
+                    if val.type == "string_literal":
+                        raw = val.text.decode("utf-8", errors="replace").strip('"').strip("'")
+                        if raw:
+                            topics.append(raw)
+                    elif val.type in ("array_initializer", "element_value_array_initializer"):
+                        for item in val.children:
+                            if item.type == "string_literal":
+                                raw = item.text.decode("utf-8", errors="replace").strip('"').strip("'")
+                                if raw:
+                                    topics.append(raw)
+        return topics
+
+    def _emit_kafka_edges_from_class(
+        self,
+        class_node,
+        class_name: str,
+        file_path: str,
+        edges: list[EdgeInfo],
+    ) -> None:
+        """Emit CONSUMES/PRODUCES edges for Kafka field declarations.
+
+        Handles:
+        - KafkaReceiver / ReactiveKafkaConsumerTemplate → CONSUMES
+        - KafkaTemplate / KafkaOperations / ReactiveKafkaProducerTemplate → PRODUCES
+        Generic value type (e.g. KafkaReceiver<String, EquipmentMove>) is
+        stored in extra.message_type for traceability.
+        """
+        qualified_source = self._qualify(class_name, file_path, None)
+
+        for node in class_node.children:
+            if node.type != "class_body":
+                continue
+            for member in node.children:
+                if member.type != "field_declaration":
+                    continue
+                has_static = False
+                outer_type: Optional[str] = None
+                value_type: Optional[str] = None   # second generic param
+                field_name: Optional[str] = None
+
+                for ch in member.children:
+                    if ch.type == "modifiers":
+                        for mod in ch.children:
+                            if mod.text and mod.text.decode("utf-8", errors="replace") == "static":
+                                has_static = True
+                    elif ch.type == "type_identifier":
+                        outer_type = ch.text.decode("utf-8", errors="replace")
+                    elif ch.type == "generic_type":
+                        # KafkaReceiver<String, EquipmentMove>
+                        type_args: list[str] = []
+                        for sub in ch.children:
+                            if sub.type == "type_identifier":
+                                if outer_type is None:
+                                    outer_type = sub.text.decode("utf-8", errors="replace")
+                            elif sub.type == "type_arguments":
+                                for arg in sub.children:
+                                    if arg.type == "type_identifier":
+                                        type_args.append(arg.text.decode("utf-8", errors="replace"))
+                        if len(type_args) >= 2:
+                            value_type = type_args[-1]  # last param is the value/message type
+                    elif ch.type == "variable_declarator":
+                        for sub in ch.children:
+                            if sub.type == "identifier":
+                                field_name = sub.text.decode("utf-8", errors="replace")
+                                break
+
+                if has_static or not outer_type or not field_name:
+                    continue
+
+                extra: dict = {"field_name": field_name}
+                if value_type:
+                    extra["message_type"] = value_type
+
+                if outer_type in _KAFKA_CONSUMER_TYPES:
+                    extra["kafka_type"] = outer_type
+                    edges.append(EdgeInfo(
+                        kind="CONSUMES",
+                        source=qualified_source,
+                        target=f"kafka:config",
+                        file_path=file_path,
+                        line=member.start_point[0] + 1,
+                        extra=extra,
+                    ))
+                elif outer_type in _KAFKA_PRODUCER_TYPES:
+                    extra["kafka_type"] = outer_type
+                    edges.append(EdgeInfo(
+                        kind="PRODUCES",
+                        source=qualified_source,
+                        target=f"kafka:config",
+                        file_path=file_path,
+                        line=member.start_point[0] + 1,
+                        extra=extra,
+                    ))
+
+    def _emit_kafka_edges_from_method(
+        self,
+        method_node,
+        method_name: str,
+        class_name: Optional[str],
+        file_path: str,
+        edges: list[EdgeInfo],
+    ) -> None:
+        """Emit CONSUMES edges for @KafkaListener / @KafkaHandler annotated methods."""
+        qualified_source = self._qualify(method_name, file_path, class_name)
+
+        for child in method_node.children:
+            if child.type != "modifiers":
+                continue
+            for mod in child.children:
+                if mod.type not in ("annotation", "marker_annotation"):
+                    continue
+                ann_name: Optional[str] = None
+                for sub in mod.children:
+                    if sub.type == "identifier":
+                        ann_name = sub.text.decode("utf-8", errors="replace")
+                        break
+                if ann_name not in _KAFKA_LISTENER_ANNOTATIONS:
+                    continue
+                # Extract topics from annotation arguments
+                topics = self._get_kafka_annotation_topics(mod)
+                if topics:
+                    for topic in topics:
+                        edges.append(EdgeInfo(
+                            kind="CONSUMES",
+                            source=qualified_source,
+                            target=f"kafka:{topic}",
+                            file_path=file_path,
+                            line=method_node.start_point[0] + 1,
+                            extra={"topic": topic, "kafka_type": "KafkaListener"},
+                        ))
+                else:
+                    # @KafkaListener without resolvable topic (config placeholder)
+                    edges.append(EdgeInfo(
+                        kind="CONSUMES",
+                        source=qualified_source,
+                        target="kafka:config",
+                        file_path=file_path,
+                        line=method_node.start_point[0] + 1,
+                        extra={"kafka_type": ann_name},
+                    ))
+
     def _extract_classes(
         self,
         child,
@@ -3064,6 +3242,8 @@ class CodeParser:
             )
             # Temporal: emit TEMPORAL_STUB edges for activity/workflow stub fields
             self._emit_temporal_stub_fields(child, name, file_path, edges)
+            # Kafka: emit CONSUMES/PRODUCES edges for Kafka field declarations
+            self._emit_kafka_edges_from_class(child, name, file_path, edges)
 
         # Recurse into class body
         self._extract_from_tree(
@@ -3128,7 +3308,7 @@ class CodeParser:
         params = self._get_params(child, language, source)
         ret_type = self._get_return_type(child, language, source)
 
-        # Java: detect Temporal method-level annotations
+        # Java: detect Temporal method-level annotations and Kafka listeners
         method_extra: dict = {}
         if language == "java" and deco_list:
             temporal_method_annots = [
@@ -3136,6 +3316,11 @@ class CodeParser:
             ]
             if temporal_method_annots:
                 method_extra["temporal_role"] = temporal_method_annots[0].lower()
+            if any(a.split("(")[0] in _KAFKA_LISTENER_ANNOTATIONS for a in deco_list):
+                method_extra["kafka_listener"] = True
+                self._emit_kafka_edges_from_method(
+                    child, name, enclosing_class, file_path, edges,
+                )
 
         node = NodeInfo(
             kind=kind,

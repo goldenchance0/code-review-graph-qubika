@@ -2236,3 +2236,60 @@ class TestTemporalResolver:
             assert "." in target or "::" in target, (
                 f"Resolved target should be qualified, got: {target!r}"
             )
+
+
+class TestKafkaParsing:
+    """Tests for Kafka CONSUMES / PRODUCES edge detection."""
+
+    def setup_method(self):
+        self.parser = CodeParser()
+        self.nodes, self.edges = self.parser.parse_file(FIXTURES / "KafkaPatterns.java")
+
+    def test_kafka_listener_annotation_emits_consumes_edge(self):
+        consumes = [e for e in self.edges if e.kind == "CONSUMES"]
+        targets = {e.target for e in consumes}
+        assert "kafka:order-events" in targets
+
+    def test_kafka_listener_multiple_topics(self):
+        consumes = [e for e in self.edges if e.kind == "CONSUMES"]
+        targets = {e.target for e in consumes}
+        assert "kafka:order-dlq" in targets
+        assert "kafka:order-retry" in targets
+
+    def test_kafka_listener_topic_in_extra(self):
+        consumes = [e for e in self.edges if e.kind == "CONSUMES"
+                    and e.target == "kafka:order-events"]
+        assert consumes
+        assert consumes[0].extra.get("topic") == "order-events"
+
+    def test_kafka_template_field_emits_produces_edge(self):
+        produces = [e for e in self.edges if e.kind == "PRODUCES"]
+        sources = {e.source for e in produces}
+        assert any("NotificationProducer" in s for s in sources)
+
+    def test_kafka_receiver_field_emits_consumes_edge(self):
+        consumes = [e for e in self.edges if e.kind == "CONSUMES"]
+        sources = {e.source for e in consumes}
+        assert any("ReactiveOrderConsumer" in s for s in sources)
+
+    def test_kafka_receiver_message_type_stored(self):
+        consumes = [e for e in self.edges if e.kind == "CONSUMES"
+                    and "ReactiveOrderConsumer" in e.source]
+        assert consumes
+        assert consumes[0].extra.get("message_type") == "OrderEvent"
+
+    def test_kafka_operations_field_emits_produces_edge(self):
+        produces = [e for e in self.edges if e.kind == "PRODUCES"]
+        sources = {e.source for e in produces}
+        assert any("ReactiveOrderConsumer" in s for s in sources)
+
+    def test_static_field_not_in_kafka_edges(self):
+        all_kafka = [e for e in self.edges if e.kind in ("CONSUMES", "PRODUCES")]
+        field_names = {e.extra.get("field_name") for e in all_kafka}
+        assert "TOPIC" not in field_names
+
+    def test_no_kafka_edges_for_plain_class(self):
+        # OrderEvent (plain class, no Kafka) should not appear as a source
+        kafka = [e for e in self.edges if e.kind in ("CONSUMES", "PRODUCES")]
+        bare_sources = {e.source.split("::")[-1].split(".")[0] for e in kafka}
+        assert "OrderEvent" not in bare_sources
