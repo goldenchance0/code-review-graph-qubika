@@ -7,7 +7,8 @@ Usage:
     code-review-graph update [--base BASE]
     code-review-graph watch
     code-review-graph status
-    code-review-graph serve [--http] [--host ADDR] [--port PORT]
+    code-review-graph serve [--auto-watch] [--http] [--host ADDR] [--port PORT]
+    code-review-graph mcp [--auto-watch]
     code-review-graph visualize
     code-review-graph wiki
     code-review-graph detect-changes [--base BASE] [--brief]
@@ -52,7 +53,7 @@ logger = logging.getLogger(__name__)
 # Shared platform choices for install and init commands
 _PLATFORM_CHOICES = [
     "codex", "claude", "claude-code", "cursor", "windsurf", "zed",
-    "continue", "opencode", "antigravity", "qwen", "kiro", "qoder", "all",
+    "continue", "opencode", "antigravity", "gemini-cli", "qwen", "kiro", "qoder", "all",
 ]
 
 
@@ -227,6 +228,8 @@ def _handle_init(args: argparse.Namespace) -> None:
     from .skills import (
         PLATFORMS,
         generate_skills,
+        install_gemini_cli_hooks,
+        install_gemini_cli_skills,
         inject_claude_md,
         inject_platform_instructions,
         install_cursor_hooks,
@@ -237,8 +240,15 @@ def _handle_init(args: argparse.Namespace) -> None:
     )
 
     if not skip_skills:
-        skills_dir = generate_skills(repo_root)
-        print(f"Generated skills in {skills_dir}")
+        # Claude Code skills are only relevant for Claude (or full install).
+        if target in ("claude", "all"):
+            skills_dir = generate_skills(repo_root)
+            print(f"Generated Claude Code skills in {skills_dir}")
+
+        # Gemini CLI skills are workspace-scoped under .gemini/.
+        if target in ("gemini-cli", "all"):
+            gemini_skills_dir = install_gemini_cli_skills(repo_root)
+            print(f"Installed Gemini CLI skills in {gemini_skills_dir}")
 
     # Confirm before writing instruction files (#173). --yes skips the
     # prompt; --no-instructions skips the whole block.
@@ -283,6 +293,13 @@ def _handle_init(args: argparse.Namespace) -> None:
             except Exception as exc:
                 logger.warning("Could not install Cursor hooks: %s", exc)
 
+    if not skip_hooks and target in ("gemini-cli", "all"):
+        try:
+            gemini_settings = install_gemini_cli_hooks(repo_root)
+            print(f"Installed Gemini CLI hooks in {gemini_settings}")
+        except Exception as exc:
+            logger.warning("Could not install Gemini CLI hooks: %s", exc)
+
     # OpenCode plugin (user-level, gated by same detect() as MCP config)
     if not skip_hooks and target in ("all", "opencode") and PLATFORMS["opencode"]["detect"]():
         try:
@@ -312,6 +329,20 @@ def _cli_post_process(store: GraphStore) -> None:
         print(f"Communities: {pp['communities_detected']}")
 
 
+def _handle_data_dir_option(args, repo_root: Path) -> None:
+    """Handle --data-dir option by updating registry if specified."""
+    if hasattr(args, "data_dir") and args.data_dir:
+        try:
+            from .registry import Registry
+            data_dir_path = Path(args.data_dir).expanduser().resolve()
+            data_dir_path.mkdir(parents=True, exist_ok=True)
+            Registry().set_data_dir(str(repo_root), str(data_dir_path))
+            logging.info(f"Graph database will be stored at: {data_dir_path}")
+        except Exception as exc:
+            logging.error(f"Failed to set data directory: {exc}")
+            sys.exit(1)
+
+
 def main() -> None:
     """Main CLI entry point."""
     ap = argparse.ArgumentParser(
@@ -332,12 +363,12 @@ def main() -> None:
     install_cmd.add_argument(
         "--no-skills",
         action="store_true",
-        help="Skip generating Claude Code skill files",
+        help="Skip generating platform skill files",
     )
     install_cmd.add_argument(
         "--no-hooks",
         action="store_true",
-        help="Skip installing Claude Code hooks",
+        help="Skip installing platform hooks",
     )
     install_cmd.add_argument(
         "--no-instructions",
@@ -373,12 +404,12 @@ def main() -> None:
     init_cmd.add_argument(
         "--no-skills",
         action="store_true",
-        help="Skip generating Claude Code skill files",
+        help="Skip generating platform skill files",
     )
     init_cmd.add_argument(
         "--no-hooks",
         action="store_true",
-        help="Skip installing Claude Code hooks",
+        help="Skip installing platform hooks",
     )
     init_cmd.add_argument(
         "--no-instructions",
@@ -414,6 +445,11 @@ def main() -> None:
         action="store_true",
         help="Skip all post-processing (raw parse only)",
     )
+    build_cmd.add_argument(
+        "--data-dir",
+        default=None,
+        help="External directory to store graph database (useful for network shares)"
+    )
 
     # update
     update_cmd = sub.add_parser("update", help="Incremental update (only changed files)")
@@ -429,6 +465,11 @@ def main() -> None:
         action="store_true",
         help="Skip all post-processing (raw parse only)",
     )
+    update_cmd.add_argument(
+        "--data-dir",
+        default=None,
+        help="External directory to store graph database (useful for network shares)"
+    )
 
     # postprocess
     pp_cmd = sub.add_parser(
@@ -439,14 +480,29 @@ def main() -> None:
     pp_cmd.add_argument("--no-flows", action="store_true", help="Skip flow detection")
     pp_cmd.add_argument("--no-communities", action="store_true", help="Skip community detection")
     pp_cmd.add_argument("--no-fts", action="store_true", help="Skip FTS rebuild")
+    pp_cmd.add_argument(
+        "--data-dir",
+        default=None,
+        help="External directory to store graph database (useful for network shares)"
+    )
 
     # watch
     watch_cmd = sub.add_parser("watch", help="Watch for changes and auto-update")
     watch_cmd.add_argument("--repo", default=None, help="Repository root (auto-detected)")
+    watch_cmd.add_argument(
+        "--data-dir",
+        default=None,
+        help="External directory to store graph database (useful for network shares)"
+    )
 
     # status
     status_cmd = sub.add_parser("status", help="Show graph statistics")
     status_cmd.add_argument("--repo", default=None, help="Repository root (auto-detected)")
+    status_cmd.add_argument(
+        "--data-dir",
+        default=None,
+        help="External directory to store graph database (useful for network shares)"
+    )
 
     # visualize
     vis_cmd = sub.add_parser("visualize", help="Generate interactive HTML graph visualization")
@@ -468,6 +524,11 @@ def main() -> None:
         default="html",
         help="Export format (default: html)",
     )
+    vis_cmd.add_argument(
+        "--data-dir",
+        default=None,
+        help="External directory to store graph database (useful for network shares)"
+    )
 
     # wiki
     wiki_cmd = sub.add_parser("wiki", help="Generate markdown wiki from community structure")
@@ -476,6 +537,11 @@ def main() -> None:
         "--force",
         action="store_true",
         help="Regenerate all pages even if content unchanged",
+    )
+    wiki_cmd.add_argument(
+        "--data-dir",
+        default=None,
+        help="External directory to store graph database (useful for network shares)"
     )
 
     # register
@@ -513,12 +579,17 @@ def main() -> None:
     detect_cmd.add_argument("--brief", action="store_true", help="Show brief summary only")
     detect_cmd.add_argument("--repo", default=None, help="Repository root (auto-detected)")
 
-    # serve
+    # serve / mcp
     serve_cmd = sub.add_parser(
         "serve",
         help="Start MCP server (stdio by default, or HTTP on localhost with --http)",
     )
     serve_cmd.add_argument("--repo", default=None, help="Repository root (auto-detected)")
+    serve_cmd.add_argument(
+        "--auto-watch",
+        action="store_true",
+        help="Start filesystem watch in a daemon thread while MCP server runs",
+    )
     serve_cmd.add_argument(
         "--tools", default=None,
         help=(
@@ -545,6 +616,14 @@ def main() -> None:
         default=None,
         metavar="PORT",
         help="Port for --http (default: 5555)",
+    )
+
+    mcp_cmd = sub.add_parser("mcp", help="Alias for serve")
+    mcp_cmd.add_argument("--repo", default=None, help="Repository root (auto-detected)")
+    mcp_cmd.add_argument(
+        "--auto-watch",
+        action="store_true",
+        help="Start filesystem watch in a daemon thread while MCP server runs",
     )
 
     # daemon
@@ -632,25 +711,30 @@ def main() -> None:
         _print_banner()
         return
 
-    if args.command == "serve":
+    if args.command in ("serve", "mcp"):
         from .main import main as serve_main
 
-        if args.port is not None and not args.http:
-            serve_cmd.error("--port requires --http")
-        if args.host is not None and not args.http:
-            serve_cmd.error("--host requires --http")
-        if args.http:
-            host = args.host if args.host is not None else "127.0.0.1"
-            port = args.port if args.port is not None else 5555
-            serve_main(
-                repo_root=args.repo,
-                transport="streamable-http",
-                host=host,
-                port=port,
-                tools=args.tools,
-            )
+        auto_watch = getattr(args, "auto_watch", False)
+        if args.command == "serve":
+            if args.port is not None and not args.http:
+                serve_cmd.error("--port requires --http")
+            if args.host is not None and not args.http:
+                serve_cmd.error("--host requires --http")
+            if args.http:
+                host = args.host if args.host is not None else "127.0.0.1"
+                port = args.port if args.port is not None else 5555
+                serve_main(
+                    repo_root=args.repo,
+                    auto_watch=auto_watch,
+                    transport="streamable-http",
+                    host=host,
+                    port=port,
+                    tools=args.tools,
+                )
+            else:
+                serve_main(repo_root=args.repo, auto_watch=auto_watch, tools=args.tools)
         else:
-            serve_main(repo_root=args.repo, tools=args.tools)
+            serve_main(repo_root=args.repo, auto_watch=auto_watch)
         return
 
     if args.command == "daemon":
@@ -766,6 +850,7 @@ def main() -> None:
 
     if args.command == "postprocess":
         repo_root = Path(args.repo) if args.repo else find_project_root()
+        _handle_data_dir_option(args, repo_root)
         db_path = get_db_path(repo_root)
         store = GraphStore(db_path)
         try:
@@ -801,6 +886,10 @@ def main() -> None:
             sys.exit(1)
     else:
         repo_root = Path(args.repo) if args.repo else find_project_root()
+
+    # Handle --data-dir for commands that support it
+    if args.command in ("build", "update", "detect-changes", "status", "watch", "visualize", "wiki"):
+        _handle_data_dir_option(args, repo_root)
 
     db_path = get_db_path(repo_root)
     store = GraphStore(db_path)
