@@ -20,6 +20,7 @@ from code_review_graph.incremental import (
     get_db_path,
     get_staged_and_unstaged,
     incremental_update,
+    start_watch_thread,
 )
 
 
@@ -740,5 +741,31 @@ class TestMultiHopDependents:
                 "DependentList.truncated should be False when the "
                 "expansion completed without hitting the cap"
             )
+        finally:
+            store.close()
+
+
+class TestStartWatchThread:
+    @patch("code_review_graph.incremental.watch")
+    def test_starts_background_thread(self, mock_watch, tmp_path):
+        """start_watch_thread returns a running thread when watchdog is available."""
+        db_path = tmp_path / "graph.db"
+        store = GraphStore(db_path)
+        try:
+            thread = start_watch_thread(tmp_path, store, daemon=True)
+            assert thread is not None
+            assert thread.daemon is True
+            assert thread.is_alive()
+        finally:
+            store.close()
+
+    def test_returns_none_when_watchdog_unavailable(self, tmp_path):
+        """start_watch_thread returns None when watchdog is not installed."""
+        db_path = tmp_path / "graph.db"
+        store = GraphStore(db_path)
+        try:
+            with patch.dict("sys.modules", {"watchdog": None}):
+                thread = start_watch_thread(tmp_path, store, daemon=True)
+            assert thread is None
         finally:
             store.close()

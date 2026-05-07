@@ -1101,3 +1101,29 @@ def watch(
         observer.stop()
     observer.join()
     logger.info("Watch stopped.")
+
+
+def start_watch_thread(
+    repo_root: Path,
+    store: GraphStore,
+    daemon: bool = True,
+) -> threading.Thread | None:
+    """Start watch mode in a background thread.
+
+    Returns the started thread, or None if watchdog is unavailable.
+    """
+    try:
+        import watchdog  # noqa: F401
+    except ImportError:
+        logger.warning("watchdog not installed; auto-watch disabled")
+        return None
+
+    thread = threading.Thread(
+        target=watch,
+        args=(repo_root, store),
+        daemon=daemon,
+        name="crg-watch",
+    )
+    thread.start()
+    logger.info("Auto-watch started for %s", repo_root)
+    return thread
