@@ -4051,7 +4051,8 @@ class CodeParser:
                     elif val.type in ("array_initializer", "element_value_array_initializer"):
                         for item in val.children:
                             if item.type == "string_literal":
-                                raw = item.text.decode("utf-8", errors="replace").strip('"').strip("'")
+                                txt = item.text.decode("utf-8", errors="replace")
+                                raw = txt.strip('"').strip("'")
                                 if raw:
                                     topics.append(raw)
         return topics
@@ -4122,7 +4123,7 @@ class CodeParser:
                     edges.append(EdgeInfo(
                         kind="CONSUMES",
                         source=qualified_source,
-                        target=f"kafka:config",
+                        target="kafka:config",
                         file_path=file_path,
                         line=member.start_point[0] + 1,
                         extra=extra,
@@ -4132,7 +4133,7 @@ class CodeParser:
                     edges.append(EdgeInfo(
                         kind="PRODUCES",
                         source=qualified_source,
-                        target=f"kafka:config",
+                        target="kafka:config",
                         file_path=file_path,
                         line=member.start_point[0] + 1,
                         extra=extra,
@@ -4237,7 +4238,8 @@ class CodeParser:
                 a for a in class_annotations if a in _TEMPORAL_INTERFACE_ANNOTATIONS
             ]
             if temporal_roles:
-                role = "workflow_interface" if "WorkflowInterface" in temporal_roles else "activity_interface"
+                is_wf = "WorkflowInterface" in temporal_roles
+                role = "workflow_interface" if is_wf else "activity_interface"
                 extra["temporal_role"] = role
 
         node = NodeInfo(

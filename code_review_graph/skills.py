@@ -807,40 +807,43 @@ Fall back to Grep/Glob/Read **only** when the graph doesn't cover what you need.
 # includes YAML front matter so Copilot Chat applies it across the workspace.
 _COPILOT_SECTION = f"""---
 applyTo: '**'
-description: Use code-review-graph MCP tools for token-efficient codebase exploration and code review instead of built-in file/search tools.
+description: >-
+  Use code-review-graph MCP tools for token-efficient
+  codebase exploration and code review.
 ---
 
 {_CLAUDE_MD_SECTION_MARKER}
 ## MCP Tools: code-review-graph
 
 **IMPORTANT: This project has a knowledge graph. ALWAYS use the
-code-review-graph MCP tools BEFORE using #tool:read/readFile #tool:search/fileSearch #tool:search/textSearch to explore
-the codebase.** The graph is faster, cheaper (fewer tokens), and gives
-you structural context (callers, dependents, test coverage) that file
-scanning cannot.
+code-review-graph MCP tools BEFORE using file/search tools to
+explore the codebase.** The graph is faster, cheaper (fewer
+tokens), and gives you structural context (callers, dependents,
+test coverage) that file scanning cannot.
 
 ### When to use graph tools FIRST
 
-- **Exploring code**: `semantic_search_nodes` or `query_graph` instead of #tool:search/fileSearch
-- **Understanding impact**: `get_impact_radius` instead of manually tracing imports
-- **Code review**: `detect_changes` + `get_review_context` instead of reading entire files
-- **Finding relationships**: `query_graph` with callers_of/callees_of/imports_of/tests_for
-- **Architecture questions**: `get_architecture_overview` + `list_communities`
+- **Exploring code**: `semantic_search_nodes` or `query_graph`
+- **Understanding impact**: `get_impact_radius`
+- **Code review**: `detect_changes` + `get_review_context`
+- **Finding relationships**: `query_graph` callers_of/callees_of
+- **Architecture questions**: `get_architecture_overview`
 
-Fall back to #tool:read/readFile, #tool:search/fileSearch, or #tool:search/textSearch **only** when the graph doesn't cover what you need.
+Fall back to file/search tools **only** when the graph doesn't
+cover what you need.
 
 ### Key Tools
 
 | Tool | Use when |
 | ------ | ---------- |
-| `detect_changes` | Reviewing code changes — gives risk-scored analysis |
-| `get_review_context` | Need source snippets for review — token-efficient |
-| `get_impact_radius` | Understanding blast radius of a change |
-| `get_affected_flows` | Finding which execution paths are impacted |
-| `query_graph` | Tracing callers, callees, imports, tests, dependencies |
-| `semantic_search_nodes` | Finding functions/classes by name or keyword |
-| `get_architecture_overview` | Understanding high-level codebase structure |
-| `refactor_tool` | Planning renames, finding dead code |
+| `detect_changes` | Risk-scored change analysis |
+| `get_review_context` | Token-efficient source snippets |
+| `get_impact_radius` | Blast radius of a change |
+| `get_affected_flows` | Impacted execution paths |
+| `query_graph` | Trace callers, callees, imports, tests |
+| `semantic_search_nodes` | Find functions/classes by keyword |
+| `get_architecture_overview` | High-level structure |
+| `refactor_tool` | Rename planning, dead code |
 
 ### Workflow
 
@@ -943,7 +946,11 @@ cat > /dev/null || true
 
 msg="$(code-review-graph status --repo "__CRG_REPO__" 2>&1 | head -n 1 || true)"
 
-CRG_MSG="$msg" python3 -c 'import json, os; print(json.dumps({"systemMessage": os.environ.get("CRG_MSG",""), "suppressOutput": True}))' 2>/dev/null || echo '{"suppressOutput": true}'
+CRG_MSG="$msg" python3 -c '
+import json,os
+m=os.environ.get("CRG_MSG","")
+print(json.dumps({"systemMessage":m,"suppressOutput":True}))
+' 2>/dev/null || echo '{"suppressOutput": true}'
 exit 0
 """
     session_start_script = session_start_script.replace("__CRG_REPO__", repo_arg)
@@ -974,7 +981,9 @@ exit 0
     if not isinstance(hooks_obj, dict):
         hooks_obj = {}
 
-    def _ensure_group(event_name: str, matcher: str, hook_command: str, name: str, timeout: int) -> None:
+    def _ensure_group(
+        event_name: str, matcher: str, hook_command: str, name: str, timeout: int,
+    ) -> None:
         arr = hooks_obj.get(event_name, [])
         if not isinstance(arr, list):
             arr = []
@@ -987,7 +996,8 @@ exit 0
             if not isinstance(nested, list):
                 return False
             for h in nested:
-                if isinstance(h, dict) and h.get("type") == "command" and h.get("command") == hook_command:
+                if isinstance(h, dict) and h.get("type") == "command" \
+                        and h.get("command") == hook_command:
                     return True
             return False
 
