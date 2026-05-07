@@ -7,7 +7,8 @@ Usage:
     code-review-graph update [--base BASE]
     code-review-graph watch
     code-review-graph status
-    code-review-graph serve [--http] [--host ADDR] [--port PORT]
+    code-review-graph serve [--auto-watch] [--http] [--host ADDR] [--port PORT]
+    code-review-graph mcp [--auto-watch]
     code-review-graph visualize
     code-review-graph wiki
     code-review-graph detect-changes [--base BASE] [--brief]
@@ -513,12 +514,17 @@ def main() -> None:
     detect_cmd.add_argument("--brief", action="store_true", help="Show brief summary only")
     detect_cmd.add_argument("--repo", default=None, help="Repository root (auto-detected)")
 
-    # serve
+    # serve / mcp
     serve_cmd = sub.add_parser(
         "serve",
         help="Start MCP server (stdio by default, or HTTP on localhost with --http)",
     )
     serve_cmd.add_argument("--repo", default=None, help="Repository root (auto-detected)")
+    serve_cmd.add_argument(
+        "--auto-watch",
+        action="store_true",
+        help="Start filesystem watch in a daemon thread while MCP server runs",
+    )
     serve_cmd.add_argument(
         "--tools", default=None,
         help=(
@@ -545,6 +551,14 @@ def main() -> None:
         default=None,
         metavar="PORT",
         help="Port for --http (default: 5555)",
+    )
+
+    mcp_cmd = sub.add_parser("mcp", help="Alias for serve")
+    mcp_cmd.add_argument("--repo", default=None, help="Repository root (auto-detected)")
+    mcp_cmd.add_argument(
+        "--auto-watch",
+        action="store_true",
+        help="Start filesystem watch in a daemon thread while MCP server runs",
     )
 
     # daemon
@@ -632,25 +646,30 @@ def main() -> None:
         _print_banner()
         return
 
-    if args.command == "serve":
+    if args.command in ("serve", "mcp"):
         from .main import main as serve_main
 
-        if args.port is not None and not args.http:
-            serve_cmd.error("--port requires --http")
-        if args.host is not None and not args.http:
-            serve_cmd.error("--host requires --http")
-        if args.http:
-            host = args.host if args.host is not None else "127.0.0.1"
-            port = args.port if args.port is not None else 5555
-            serve_main(
-                repo_root=args.repo,
-                transport="streamable-http",
-                host=host,
-                port=port,
-                tools=args.tools,
-            )
+        auto_watch = getattr(args, "auto_watch", False)
+        if args.command == "serve":
+            if args.port is not None and not args.http:
+                serve_cmd.error("--port requires --http")
+            if args.host is not None and not args.http:
+                serve_cmd.error("--host requires --http")
+            if args.http:
+                host = args.host if args.host is not None else "127.0.0.1"
+                port = args.port if args.port is not None else 5555
+                serve_main(
+                    repo_root=args.repo,
+                    auto_watch=auto_watch,
+                    transport="streamable-http",
+                    host=host,
+                    port=port,
+                    tools=args.tools,
+                )
+            else:
+                serve_main(repo_root=args.repo, auto_watch=auto_watch, tools=args.tools)
         else:
-            serve_main(repo_root=args.repo, tools=args.tools)
+            serve_main(repo_root=args.repo, auto_watch=auto_watch)
         return
 
     if args.command == "daemon":
