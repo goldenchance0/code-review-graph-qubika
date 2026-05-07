@@ -4,10 +4,18 @@
 
 **code-review-graph** is a persistent, incrementally-updated knowledge graph for token-efficient code reviews with Claude Code. It parses codebases using Tree-sitter, builds a structural graph in SQLite, and exposes it via MCP tools and prompts.
 
+## Graph Tool Usage (Token-Efficient)
+When using code-review-graph MCP tools, follow these rules:
+1. First call: `get_minimal_context(task="<description>")` — costs ~100 tokens, gives you the full picture.
+2. All subsequent calls: use `detail_level="minimal"` unless you need more.
+3. Prefer `query_graph` with a specific target over broad `list_*` calls.
+4. The `next_tool_suggestions` field in every response tells you the optimal next step.
+5. Target: ≤5 tool calls per task, ≤800 total tokens of graph context.
+
 ## Architecture
 
 - **Core Package**: `code_review_graph/` (Python 3.10+)
-  - `parser.py` — Tree-sitter multi-language AST parser (18 languages including Vue SFC, Solidity, Dart, R, Perl)
+  - `parser.py` — Tree-sitter multi-language AST parser (19 languages including Vue SFC, Solidity, Dart, R, Perl, Lua + Jupyter/Databricks notebooks)
   - `graph.py` — SQLite-backed graph store (nodes, edges, BFS impact analysis)
   - `tools.py` — 22 MCP tool implementations
   - `main.py` — FastMCP server entry point (stdio transport), registers 22 tools + 5 prompts
@@ -38,7 +46,7 @@
 
 ```bash
 # Development
-uv run pytest tests/ --tb=short -q          # Run tests (486 tests)
+uv run pytest tests/ --tb=short -q          # Run tests (572 tests)
 uv run ruff check code_review_graph/        # Lint
 uv run mypy code_review_graph/ --ignore-missing-imports --no-strict-optional
 
@@ -81,7 +89,7 @@ uv run code-review-graph eval               # Run evaluation benchmarks
 - `tests/test_tools.py` — MCP tool integration tests
 - `tests/test_visualization.py` — Export, HTML generation, C++ resolution
 - `tests/test_incremental.py` — Build, update, migration, git ops
-- `tests/test_multilang.py` — 18 language parsing tests (including Vue, Solidity, Dart, R, Perl)
+- `tests/test_multilang.py` — 19 language parsing tests (including Vue, Solidity, Dart, R, Perl, XS, Lua)
 - `tests/test_embeddings.py` — Vector encode/decode, similarity, store
 - `tests/test_flows.py` — Execution flow detection and criticality
 - `tests/test_communities.py` — Community detection, architecture overview
@@ -105,3 +113,90 @@ uv run code-review-graph eval               # Run evaluation benchmarks
 - **type-check**: mypy
 - **security**: bandit scan
 - **test**: pytest matrix (3.10, 3.11, 3.12, 3.13) with 50% coverage minimum
+
+
+<!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:ca08a54f -->
+## Beads Issue Tracker
+
+This project uses **bd (beads)** for issue tracking. Run `bd prime` to see full workflow context and commands.
+
+### Quick Reference
+
+```bash
+bd ready              # Find available work
+bd show <id>          # View issue details
+bd update <id> --claim  # Claim work
+bd close <id>         # Complete work
+```
+
+### Rules
+
+- Use `bd` for ALL task tracking — do NOT use TodoWrite, TaskCreate, or markdown TODO lists
+- Run `bd prime` for detailed command reference and session close protocol
+- Use `bd remember` for persistent knowledge — do NOT use MEMORY.md files
+
+## Session Completion
+
+**When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
+
+**MANDATORY WORKFLOW:**
+
+1. **File issues for remaining work** - Create issues for anything that needs follow-up
+2. **Run quality gates** (if code changed) - Tests, linters, builds
+3. **Update issue status** - Close finished work, update in-progress items
+4. **PUSH TO REMOTE** - This is MANDATORY:
+   ```bash
+   git pull --rebase
+   bd dolt push
+   git push
+   git status  # MUST show "up to date with origin"
+   ```
+5. **Clean up** - Clear stashes, prune remote branches
+6. **Verify** - All changes committed AND pushed
+7. **Hand off** - Provide context for next session
+
+**CRITICAL RULES:**
+- Work is NOT complete until `git push` succeeds
+- NEVER stop before pushing - that leaves work stranded locally
+- NEVER say "ready to push when you are" - YOU must push
+- If push fails, resolve and retry until it succeeds
+<!-- END BEADS INTEGRATION -->
+
+<!-- code-review-graph MCP tools -->
+## MCP Tools: code-review-graph
+
+**IMPORTANT: This project has a knowledge graph. ALWAYS use the
+code-review-graph MCP tools BEFORE using Grep/Glob/Read to explore
+the codebase.** The graph is faster, cheaper (fewer tokens), and gives
+you structural context (callers, dependents, test coverage) that file
+scanning cannot.
+
+### When to use graph tools FIRST
+
+- **Exploring code**: `semantic_search_nodes` or `query_graph` instead of Grep
+- **Understanding impact**: `get_impact_radius` instead of manually tracing imports
+- **Code review**: `detect_changes` + `get_review_context` instead of reading entire files
+- **Finding relationships**: `query_graph` with callers_of/callees_of/imports_of/tests_for
+- **Architecture questions**: `get_architecture_overview` + `list_communities`
+
+Fall back to Grep/Glob/Read **only** when the graph doesn't cover what you need.
+
+### Key Tools
+
+| Tool | Use when |
+|------|----------|
+| `detect_changes` | Reviewing code changes — gives risk-scored analysis |
+| `get_review_context` | Need source snippets for review — token-efficient |
+| `get_impact_radius` | Understanding blast radius of a change |
+| `get_affected_flows` | Finding which execution paths are impacted |
+| `query_graph` | Tracing callers, callees, imports, tests, dependencies |
+| `semantic_search_nodes` | Finding functions/classes by name or keyword |
+| `get_architecture_overview` | Understanding high-level codebase structure |
+| `refactor_tool` | Planning renames, finding dead code |
+
+### Workflow
+
+1. The graph auto-updates on file changes (via hooks).
+2. Use `detect_changes` for code review.
+3. Use `get_affected_flows` to understand impact.
+4. Use `query_graph` pattern="tests_for" to check coverage.

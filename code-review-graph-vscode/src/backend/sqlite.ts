@@ -8,7 +8,33 @@
  * Uses `better-sqlite3` with prepared statements for performance.
  */
 
-import Database from 'better-sqlite3';
+import type BetterSqlite3 from 'better-sqlite3';
+
+type DatabaseType = BetterSqlite3.Database;
+
+// Load better-sqlite3 with graceful error handling for ABI mismatches.
+// On WSL or mismatched Node.js versions, the native module may fail to load.
+// better-sqlite3 uses `export =` so we import the value via require() and
+// type it as the DatabaseConstructor.
+let Database: typeof import('better-sqlite3');
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  Database = require('better-sqlite3');
+} catch (err: unknown) {
+  const msg = err instanceof Error ? err.message : String(err);
+  const isAbiMismatch = msg.includes('NODE_MODULE_VERSION')
+    || msg.includes('was compiled against')
+    || msg.includes('not a valid Win32');
+  if (isAbiMismatch) {
+    console.error(
+      '[code-review-graph] better-sqlite3 ABI mismatch. '
+      + 'Your VS Code uses a different Node.js version than the one '
+      + 'this extension was built for. '
+      + 'Try: cd ~/.vscode/extensions/code-review-graph-* && npm rebuild better-sqlite3'
+    );
+  }
+  throw err;
+}
 
 // ---------------------------------------------------------------------------
 // Interfaces
@@ -132,7 +158,7 @@ const MAX_OPEN_RETRIES = 3;
 const RETRY_BACKOFF_MS = 100;
 
 export class SqliteReader {
-  private db: Database.Database | null = null;
+  private db: DatabaseType | null = null;
 
   /**
    * Create a SqliteReader with retry logic that does not block the event loop.
@@ -186,7 +212,7 @@ export class SqliteReader {
         if (row) {
           const version = parseInt(row.value, 10);
           // Must match LATEST_VERSION in code_review_graph/migrations.py
-          const SUPPORTED_SCHEMA_VERSION = 5;
+          const SUPPORTED_SCHEMA_VERSION = 9;
           if (!isNaN(version) && version > SUPPORTED_SCHEMA_VERSION) {
             return `Database was created with a newer version (schema v${version}). Update the extension.`;
           }
@@ -528,7 +554,7 @@ export class SqliteReader {
   // -----------------------------------------------------------------------
 
   /** Return the open database handle or throw. */
-  private _db(): Database.Database {
+  private _db(): DatabaseType {
     if (!this.db) {
       throw new Error('SqliteReader: database is closed');
     }
