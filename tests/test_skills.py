@@ -49,19 +49,22 @@ class TestGenerateSkills:
         assert result.is_dir()
         assert result == tmp_path / ".claude" / "skills"
 
-    def test_creates_four_skill_files(self, tmp_path):
+    def test_creates_four_skill_subdirs(self, tmp_path):
         skills_dir = generate_skills(tmp_path)
-        files = sorted(f.name for f in skills_dir.iterdir())
-        assert files == [
-            "debug-issue.md",
-            "explore-codebase.md",
-            "refactor-safely.md",
-            "review-changes.md",
+        subdirs = sorted(f.name for f in skills_dir.iterdir() if f.is_dir())
+        assert subdirs == [
+            "debug-issue",
+            "explore-codebase",
+            "refactor-safely",
+            "review-changes",
         ]
+        for d in skills_dir.iterdir():
+            assert (d / "skill.md").is_file()
 
     def test_skill_files_have_frontmatter(self, tmp_path):
         skills_dir = generate_skills(tmp_path)
-        for path in skills_dir.iterdir():
+        for subdir in skills_dir.iterdir():
+            path = subdir / "skill.md"
             content = path.read_text()
             assert content.startswith("---\n")
             assert "name:" in content
@@ -82,18 +85,20 @@ class TestGenerateSkills:
     def test_skill_content_includes_get_minimal_context(self, tmp_path):
         """Every skill template must reference get_minimal_context."""
         skills_dir = generate_skills(tmp_path)
-        for path in skills_dir.iterdir():
-            content = path.read_text()
+        for subdir in skills_dir.iterdir():
+            content = (subdir / "skill.md").read_text()
             assert "get_minimal_context" in content, (
-                f"{path.name} missing get_minimal_context reference"
+                f"{subdir.name} missing get_minimal_context reference"
             )
 
     def test_skill_content_includes_detail_level(self, tmp_path):
         """Every skill template must reference detail_level."""
         skills_dir = generate_skills(tmp_path)
-        for path in skills_dir.iterdir():
-            content = path.read_text()
-            assert "detail_level" in content, f"{path.name} missing detail_level reference"
+        for subdir in skills_dir.iterdir():
+            content = (subdir / "skill.md").read_text()
+            assert "detail_level" in content, (
+                f"{subdir.name} missing detail_level reference"
+            )
 
     def test_idempotent(self, tmp_path):
         """Running twice should not fail and files should still be valid."""

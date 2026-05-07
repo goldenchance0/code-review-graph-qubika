@@ -12,6 +12,7 @@ import json
 import logging
 import os
 import platform
+import re
 import shutil
 import stat
 import sys
@@ -228,10 +229,15 @@ def _detect_serve_command() -> tuple[str, list[str]]:
     return (sys.executable, ["-m", "code_review_graph", "serve"])
 
 
-def _build_server_entry(plat: dict[str, Any], key: str = "") -> dict[str, Any]:
+def _build_server_entry(
+    plat: dict[str, Any], key: str = "", repo_root: "Path | None" = None,
+) -> dict[str, Any]:
     """Build the MCP server entry for a platform."""
     command, args = _detect_serve_command()
     entry: dict[str, Any] = {"command": command, "args": args}
+    # Include cwd so the MCP server can find the graph database
+    if repo_root is not None:
+        entry["cwd"] = str(repo_root)
     if plat["needs_type"]:
         entry["type"] = "stdio"
     if key == "opencode":
@@ -314,7 +320,7 @@ def install_platform_configs(
     for key, plat in platforms_to_install.items():
         config_path: Path = plat["config_path"](repo_root)
         server_key = plat["key"]
-        server_entry = _build_server_entry(plat, key=key)
+        server_entry = _build_server_entry(plat, key=key, repo_root=repo_root)
 
         if plat["format"] == "toml":
             changed = _merge_toml_mcp_server(
@@ -337,11 +343,18 @@ def install_platform_configs(
         # Read existing config
         existing: dict[str, Any] = {}
         if config_path.exists():
+            raw = config_path.read_text(encoding="utf-8", errors="replace")
+            # Strip single-line comments and trailing commas (JSONC compat
+            # for editors like Zed that allow non-standard JSON).
+            stripped = re.sub(r'//.*?$', '', raw, flags=re.MULTILINE)
+            stripped = re.sub(r',(\s*[}\]])', r'\1', stripped)
             try:
-                existing = json.loads(config_path.read_text(encoding="utf-8", errors="replace"))
+                existing = json.loads(stripped)
             except (json.JSONDecodeError, OSError):
-                logger.warning("Invalid JSON in %s, will overwrite.", config_path)
-                existing = {}
+                print(f"  {plat['name']}: {config_path} contains "
+                      f"unparseable JSON — skipping to avoid data loss. "
+                      f"Please add the MCP config manually.")
+                continue
 
         if plat["format"] == "array":
             arr = existing.get(server_key, [])
@@ -512,7 +525,11 @@ def generate_skills(repo_root: Path, skills_dir: Path | None = None) -> Path:
     skills_dir.mkdir(parents=True, exist_ok=True)
 
     for filename, skill in _SKILLS.items():
-        path = skills_dir / filename
+        # Claude Code expects skills at .claude/skills/<name>/skill.md
+        skill_name = filename.removesuffix(".md")
+        skill_subdir = skills_dir / skill_name
+        skill_subdir.mkdir(parents=True, exist_ok=True)
+        path = skill_subdir / "skill.md"
         content = (
             "---\n"
             f"name: {skill['name']}\n"
